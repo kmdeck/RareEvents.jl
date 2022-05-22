@@ -57,7 +57,7 @@ u0 = [0.0,]
 p = (θ = 1.0, σ = 1.0)
 dW = WienerProcess(t0, W0,0.0, reseed = false)
 
-tf = 1e4
+tf = 1e6
 tspan = (t0,tf)
 dt = 1.0
 T = 50
@@ -67,14 +67,10 @@ NT = Int64.(round(T/Δt_save))
 prob = SDEProblem(deterministic_tendency!, stochastic_tendency!, u0, tspan,p, noise= dW)
 sol= solve(prob, dt = dt, saveat = 0:Δt_save:tf, maxiters = 1e7);# what's the deal with max_iter needing to be > nsteps?
 u = [sol.u[k][1] for k in 1:length(sol.t)-1]
-# u has the same statistics regardless of dt. that's expected!
 
 A = zeros(length(u)-NT)
 moving_average!(A,u,NT)
 
-# u basically looks like noise.
-# The moving average should also be indep of dt because it is an integral!
-# why does this depend on dt!
 Ta = 100
 ΔT = Ta-T
 m = Int64.(round(ΔT/Δt_save))
@@ -82,9 +78,10 @@ m = Int64.(round(ΔT/Δt_save))
 M = Int(length(A)/m)
 segment_matrix  = reshape(A, (M,m))
 FT = Float64
-p_m = FT.(ones(M)./M)
-event_magnitude, rtn = return_curve(segment_matrix, FT(ΔT), p_m)
+likelihood_ratio = FT.(ones(M))
+a_m = maximum(segment_matrix, dims = 2)[:]
+event_magnitude, rtn, σ_rtn = return_curve(a_m, FT(ΔT), likelihood_ratio)
 
-plot(log10.(rtn), event_magnitude, ylim = [0,0.8], xlim = [0,7], color = "blue", label = "dt =1.0, N_MA = 50, Direct")
+plot(rtn, event_magnitude, xerr = σ_rtn, xaxis = :log, ylim = [0,1.0], xlim = [1,1e15], label = "Direct Sampling", yticks = [0,0.4,0.8], xticks = [1,1e5,1e10,1e15])
 plot!(legend = :bottomright)
 
