@@ -3,5 +3,5 @@
 *.jl~
 Manifest.toml
 *.toml~
-src/old_code.jl
+src/old_code*
 examples/ornstein_uhlenbeck_algorithm_orig.jl
