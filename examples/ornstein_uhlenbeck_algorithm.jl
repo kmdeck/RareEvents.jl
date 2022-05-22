@@ -1,55 +1,35 @@
 using Revise
-using Distributed
-
-@everywhere using DifferentialEquations: WienerProcess, SDEProblem, solve
-
 using Plots
 using RareEvents
 using Statistics
 using SpecialFunctions
+using Distributed
+include("./examples/ornstein_uhlenbeck.jl")
 
-sim_kwargs = (dt = 0.1,);
-@everywhere function ornstein_uhlenbeck1D_model(θ, σ, t0)
-    function deterministic_tendency!(dudt,u,p,t)
-        dudt .= -p.θ *u 
-    end
-    function stochastic_tendency!(dudW,u,p,t)
-        dudW .= p.σ
-    end
-    p = (θ = 1.0, σ = 1.0)
-    return deterministic_tendency!, stochastic_tendency!, p
-end
-
-@everywhere function ornstein_uhlenbeck1D_simulation(u0, tspan; dt = dt)
-    deterministic_tendency!, stochastic_tendency!, p = ornstein_uhlenbeck1D_model(1.0,1.0, tspan[1])
-    W0 = rand()*dt
-    dW = WienerProcess(tspan[1], W0,0.0)#, reseed = false)
-    prob = SDEProblem(deterministic_tendency!, stochastic_tendency!, u0, tspan, p, noise = dW)
-    sol = solve(prob, dt = dt, saveat = tspan[1]:dt:tspan[2]);
-    return sol.u
-end
-# Needed for pmap...
-@everywhere simulation_wrapper(tspan) = (u0) -> ornstein_uhlenbeck1D_simulation(u0, tspan; sim_kwargs...)
+dt = 0.1
+# pmap wants a function with a single argument. We iterate over ensemble
+# members (initial conditions) with fixed tspan for each
+alg_kwargs = ();
+@everywhere evolve_wrapper(tspan) = (u0) -> evolve_ornstein_uhlenbeck1D(u0, tspan, dt; alg_kwargs...)
 
 n_processes = Sys.CPU_THREADS
 addprocs(n_processes)
 
 
-τ = 0.5
-Nτ = Int(round(τ/sim_kwargs.dt))
-T_a = 150.0
-N = 3000
+Nτ = 5 # Nτ*dt = τ, the resample time
+T_a = 100.0 # total integration time
+N = 1000
 d = 1
-u0 = zeros(d)
+u0 = zeros(d) # No harm in starting at the same IC here for all ensemble members
 k = 0.3
 ϵ = 0.0
-score_function(x; k = k, dt =sim_kwargs.dt) = exp.(k .*sum(x[2:end]+x[1:end-1])/2.0*dt)
+score_function(x; k = k, dt =dt) = exp.(k .*sum(x[2:end]+x[1:end-1])/2.0*dt)
 
-sim = RareEventSampler{Float64}(sim_kwargs.dt, d, u0, (0.0, T_a), N, Nτ, simulation_wrapper, score_function, ϵ);
+sim = RareEventSampler{Float64}(dt, u0, (0.0, T_a), N, Nτ,evolve_wrapper, score_function, ϵ);
 
 run!(sim);
 T = 50
-NT = Int64.(round(T/sim_kwargs.dt))
+NT = Int64.(round(T/dt))
 moving_average_matrix = zeros((N, length(sim.ensemble[1])-NT))
 moving_average_row = zeros(length(sim.ensemble[1])-NT)
 p_n1 = zeros(N)
@@ -62,7 +42,7 @@ for i in 1:N
     moving_average_row .= moving_average_matrix[i,:]
     moving_average!(moving_average_row, sol, NT)
     moving_average_matrix[i,:] .= moving_average_row
-    p_n1[i] = po_over_pk(sol, sim_kwargs.dt, T_a, k, λ)
+    p_n1[i] = po_over_pk(sol, dt, T_a, k, λ)
 end
 
 event_magnitude, rtn = return_curve(moving_average_matrix, T_a-T, p_n1);
