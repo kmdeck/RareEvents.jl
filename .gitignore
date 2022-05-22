@@ -1,5 +1,7 @@
 *.png
 #.jl~
+*.jl~
+Manifest.toml
 *.toml~
 src/old_code.jl
 examples/ornstein_uhlenbeck_algorithm_orig.jl
