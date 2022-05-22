@@ -1,35 +1,20 @@
 module RareEvents
 using Statistics
 using StatsBase
-using DifferentialEquations
-using DifferentialEquations.EnsembleAnalysis
+using Distributed
 using Random
 
 # Code questions
 # This algorithm is fairly convoluted; how to make more readable?
-# Why doesnt the "clean" approach result in the same output?
 # Speed up
-# Repackage the trajectory output in ensemble, hard to access/plot.
+# Repackage the trajectory output in ensemble, hard to access/plot?. What about for different output types (CC Field Vector..)
 # make less dep on DiffEQ eventually store a model? rather than a problem
 
 # Conceptual questions
 # Why does k = 0.3 give me ~a of 0.3, not 0.6? a~k?
 # How to derive their formula?
-# Why does their formula not work all the time? (poor statistics)
-# why do the curves disagree on the low end (poor statistics here!)
-# Do return curves depend on k? They shouldnt with enough samples.
-# Picking k picks magnitude of event, most samples are from there.
-# so k = 0.3 wont do well for magnitude a = 0.6 events, because those are still rare
-# similarily, k =0.5 wont do well for a<0.2 events.
 
-# Try 2d related system and see if another score function can ID extremes
-# of each.
-
-# Determine analytic result for O-U process and compare.
-
-# Try without using the moving average
-
-export RareEventSampler, run!, moving_average!, return_curve
+export RareEventSampler, run!, moving_average!, return_curve, ensemble_statistics
 """
     moving_average!(A::Vector{FT},timeseries::Vector{FT}, window::Int)
                    where {FT<:AbstractFloat}
@@ -113,59 +98,89 @@ integration such that
 τ/dt = Integer
 (tf-t0)/dt = Integer.
 """
-struct RareEventSampler{FT<:AbstractFloat, ST,P, ES}
+struct RareEventSampler{FT<:AbstractFloat, ST,P}
     "How often output is saved from the integrations"
     dt::FT
-    "The number of prognostic variables of the dynamical system"
-    d::Int
     "The total time span for each trajectory"
     tspan::Tuple{FT,FT}
     "The number of trajectories in the ensemble"
     N::Int
-    "Time interval after which a new trajectory is proposed"
+    "Time interval after which a new trajectory is proposed: Must be integer * dt"
     τ::FT
     "The ensemble, which stores all output from all trajectories"
     ensemble::ST
-    "The dynamical system problem"
-    problem::P
+    "The dynamical system evolve function, for a single trajectory"
+    evolve_single_trajectory::P
     "The score function to use when resampling trajectories"
     score::Function
     "The standard deviation of the white noise added to each trajectory"
     ϵ::FT
     "Vector storing the normalization of the scores R at each resample"
     R::Vector{FT}
-    "ensemble score; not currently used or filled"
-    ensemble_score::ES
 end
 
+"""
+    RareEventSampler{FT}(dt::FT,
+                         d::Int,
+                         u0::U,
+                         tspan::Tuple{FT,FT},
+                         N::Int,
+                         Nτ::Int,
+                         evolve_single_trajectory::P,
+                         score::Function,
+                         ϵ::FT) where{FT,U, P}
+
+Constructor for the RareEventSampler object.
+
+The user should pass
+- a timestep `dt`, which is also the frequency of output,
+- the initial condition `u0` for the state vector (currently assumed to be the same for
+all elements of the ensemble),
+-  the time span tuple `tspan = (t0,tf)`, which 
+should be satisfy `(tf-t0)` being an integer number of timesteps and an integer
+number of the resampling time `τ`,
+- the number of ensemble members `N`
+- the `evolve` function for a single trajectory
+- the `score` function
+- `ϵ` the amplitude of the white noise to add to each element of the state vector
+
+The `evolve` function takes in initial conditions and a tspan, as well as integration
+keyword arguments, as specific to your problem, and returns the solution at intervals of `dt`.
+
+ Note that to run with pmap, we actually require the following:
+`evolve_wrapper(tspan) = (u0) ->  evolve_single_trajectory(u0, tspan; alg_kwargs...)`
+with `evolve_wrapper` passed in to the RareEventSampler.
+
+Lastly, the score function acts on single trajectories and outputs a single real number.
+ 
+"""
 function RareEventSampler{FT}(dt::FT,
-                              d::Int,
+                              u0::U,
                               tspan::Tuple{FT,FT},
                               N::Int,
                               Nτ::Int,
-                              problem::P,
+                              evolve_single_trajectory::P,
                               score::Function,
-                              ϵ::FT) where{FT,P}
-    Nsteps = Int(round((tspan[2]-tspan[1])/dt))+1
-    R = zeros(Int(round((Nsteps-1)/Nτ)))# be careful
-    state = FT.(zeros(d)) .+ NaN
-    
-    trajectory = Vector{typeof(state)}([copy(state) for _ in 1:Nsteps])
-    ensemble = Vector{typeof(trajectory)}([copy(trajectory) for _ in 1:N])
-    [ensemble[k][1] .= problem.u0 for k in 1:N];
-    ensemble_score = Vector{Vector{FT}}([copy(R) for _ in 1:N])
+                              ϵ::FT) where{FT,U, P}
     τ = dt*Nτ
-    args = (dt, d, tspan, N, τ, ensemble,problem, score, ϵ, R, ensemble_score)
-    return RareEventSampler{FT, typeof(ensemble), typeof(problem), typeof(ensemble_score)}(args...)
+    # The user should pass a tspan that requires an integer number of τ,
+    # an an integer number of dt:
+    @assert (tspan[2]-tspan[1])/dt- Int((tspan[2]-tspan[1])/dt) == 0.0
+    @assert (tspan[2]-tspan[1])/τ- Int((tspan[2]-tspan[1])/τ) == 0.0
+    
+    Nsteps = Int((tspan[2]-tspan[1])/dt)+1
+    trajectory = Vector{typeof(u0)}([similar(u0) for _ in 1:Nsteps])
+    ensemble = Vector{typeof(trajectory)}([copy(trajectory) for _ in 1:N])
+    [ensemble[k][1] .= u0 for k in 1:N];
+
+    R = zeros(Int((Nsteps-1)/Nτ))
+
+    args = (dt, tspan, N, τ, ensemble, evolve_single_trajectory, score, ϵ, R)
+    return RareEventSampler{FT, typeof(ensemble), typeof(evolve_single_trajectory)}(args...)
 end
 
-# Work on speeding this up?
-# We need to loop over the original ensemble to get normalized weights
-# We need to loop over the data to sample from it N times
-# We need to loop over it to reset the ensemble to the samples.
-
 # Begin at i = 0
-function run!(sim, u0)
+function run!(sim)
     u1 = deepcopy([sim.ensemble[k][1] for k in 1:sim.N])
     u2 = deepcopy([sim.ensemble[k][1] for k in 1:sim.N])
     t0 = sim.tspan[1]
@@ -176,47 +191,34 @@ function run!(sim, u0)
         t1 =  t0+ i*sim.τ
         i1 = 1+(i)*Nτ
         i2 = 1+(i+1)*Nτ
-        # update ensemble members and u2 - the initial condition
-        # for the next segment t1:t2 - in place according to algorithm
-        integrate_and_update!(sim, u2, u1,t2,t1, i2, i1, i)
+        solutions = integrate(sim, u1,t1,t2)
+        copies = update_ensemble_and_score!(sim, solutions, i1, i2)
+        sample_and_rewrite_history!(sim, u2, copies, i1, i2, i)
         i = i+1
         u1 = copy(u2)
     end
 end
 
-"""
-    integrate_and_update!(sim, u1, t1, t2, i1, i2)
-    
-Integrate the ensemble of trajectories from u1, at time
-t1, to time t2. Score the trajectories based on their 
-behavior from t1 to t2, accept or cut them, and return
-the initial condition u2 for the next interval.
-"""
-function integrate_and_update!(sim, u2, u1,t2,t1,i2,i1, i)
-    # Update the `problem` in place with the new IC = u1 and new tspan
-    # `i` indicates the ensemble member.
-    function prob_func(prob,i,repeat)
-        remake(prob, u0 = u1[i], tspan = (t1,t2))
-    end
-    # Create and run the ensemble
-    ensemble_problem = EnsembleProblem(sim.problem; prob_func = prob_func)
-    ensemble_solution = solve(ensemble_problem,EnsembleThreads(),trajectories=sim.N,saveat = t1:sim.dt:t2)
+function integrate(sim, u1,t1,t2)
+    # Currently 30% slower than EnsembleProblem in DifferentialEquations
+    # It is 2x as slow to run distributed = true vs distributed = false
+     return pmap(sim.evolve_single_trajectory((t1,t2)),u1;distributed = false)
+end
 
-    # Get the scores for these segments of trajectories
+function update_ensemble_and_score!(sim, solutions,i1,i2)
+    # We need to loop over the original ensemble to get normalized weights
     scores = zeros(sim.N)
     for k in 1:sim.N
-        sim.ensemble[k][i1:i2] .= ensemble_solution.u[k].u
-        scores[k] = sim.score(ensemble_solution.u[k].u)[1]
+        sim.ensemble[k][i1:i2] .= solutions[k]
+        scores[k] = sim.score(solutions[k])[1]
     end
     weights = scores ./ mean(scores)
     copies = Int.(floor.(weights .+ rand(sim.N)))
-    # Create copied/cut set; sample from it, replace trajectory history
-    # and return the final u(t2) = u2 of the accepted set, plus the noise
-    # also set the R in `sim` with the `R` of the accepted set.
-    sample_and_rewrite_history!(sim, u2, copies, i1, i2, i)
+    return copies
 end
 
 function sample_and_rewrite_history!(sim, u2, copies, i1, i2, i)
+    # We need to loop over the data to sample from it N times
     N = sim.N
     array_u = [[sim.ensemble[k][1:i2],] for k in 1:N]
     # If copies is zero, it is cut. Then shuffle the cloned set.
@@ -225,31 +227,36 @@ function sample_and_rewrite_history!(sim, u2, copies, i1, i2, i)
     copied_sample = shuffle!(vcat(sample.(array_u, copies)...))
     N_c = sum(copies)
     scores = zeros(N)
+
+    # Dimensionality of state vector
+    d = length(u2[1])
+    # We need to loop over it to reset the ensemble to the samples.
     if N_c > N
         for k in 1:N
             sim.ensemble[k][1:i2] .= copied_sample[k]
             scores[k] = sim.score(sim.ensemble[k][i1:i2])[1]
-            u2[k] = sim.ensemble[k][i2]+ randn(sim.d)*sim.ϵ
+            u2[k] = sim.ensemble[k][i2]+ randn(d)*sim.ϵ
         end
     else
         for k in 1:N_c
             sim.ensemble[k][1:i2] .= copied_sample[k]
-            # This doesnt work because we need to replace the scores
-            # if the whole trajectory is replaced
-         #   sim.ensemble_score[k][i+1] = sim.score(sim.ensemble[k][i1:i2])[1]
-
             scores[k] = sim.score(sim.ensemble[k][i1:i2])[1]
-            u2[k] = sim.ensemble[k][i2]+ randn(sim.d)*sim.ϵ
+            u2[k] = sim.ensemble[k][i2]+ randn(d)*sim.ϵ
             if k+N_c <= N # start over at the beginning if sum(copies) <N
                 sim.ensemble[k+N_c][1:i2] .= copied_sample[k]
                 scores[k+N_c] = sim.score(sim.ensemble[k][i1:i2])[1]
-                u2[k+N_c] = sim.ensemble[k][i2]+ randn(sim.d)*sim.ϵ
+                u2[k+N_c] = sim.ensemble[k][i2]+ randn(d)*sim.ϵ
             end
         end
     end
     sim.R[i+1] = mean(scores)
 end
 
-#include("./old_code.jl")
-
+# This has to be modified to plot a particular index of the state vector
+function ensemble_statistics(ensemble, state_index)
+    M = map(x -> x[state_index], reduce(hcat,ensemble))
+    means = mean(M, dims = 2)
+    stds = std(M, dims = 2)
+    return means[:], stds[:]
+end
 end
