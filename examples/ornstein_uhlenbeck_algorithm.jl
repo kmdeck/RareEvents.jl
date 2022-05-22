@@ -4,13 +4,13 @@ using RareEvents
 using Statistics
 using SpecialFunctions
 using Distributed
-include("./examples/ornstein_uhlenbeck.jl")
+include("./ornstein_uhlenbeck.jl")
 
 dt = 0.1
 # pmap wants a function with a single argument. We iterate over ensemble
 # members (initial conditions) with fixed tspan for each
 alg_kwargs = ();
-@everywhere evolve_wrapper(tspan) = (u0) -> evolve_ornstein_uhlenbeck1D(u0, tspan, dt; alg_kwargs...)
+@everywhere evolve_wrapper(tspan) = (u0) -> evolve_ornstein_uhlenbeck1D(u0, tspan, dt, alg_kwargs)
 
 n_processes = Sys.CPU_THREADS
 addprocs(n_processes)
@@ -46,9 +46,14 @@ for i in 1:N
 end
 
 event_magnitude, rtn = return_curve(moving_average_matrix, T_a-T, p_n1);
-plot()
+plot1 = plot()
 plot!(log10.(rtn), event_magnitude, ylim = [0,1.0], xlim = [0,15], color = "red", label = "k = 0.3, N=3e3", yticks = [0,0.4,0.8])
 
+
+μ, σ = ensemble_statistics(sim.ensemble, 1)
+plot2 = plot(0.0:dt:T_a,μ,grid=false,ribbon=σ,fillalpha=.5)
+plot(plot1, plot2)
+#=
 ### Analytic estimate does not work yet
 σ = 0.142 # Computed standard deviation of moving average of x(t), from a direct integration,
 # over time T=50. It has a mean of 0. This is independent of dt if dt is small enough.
@@ -81,3 +86,4 @@ plot!(log10.(analytic_rtn), event_magnitude, color = "blue", label = "analytic e
 # The analytic expectation is FOR the moving average, not the max?
 # P_k(max(Y) = η) ∝ (q choose 1 ) F_k(η)^(q-1) P_k(η) ?
 # where F_k(η) is the cumulative distribution ∫_-∞^η P_k(s) ds
+=#

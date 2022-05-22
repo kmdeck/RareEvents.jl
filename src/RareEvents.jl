@@ -14,7 +14,7 @@ using Random
 # Why does k = 0.3 give me ~a of 0.3, not 0.6? a~k?
 # How to derive their formula?
 
-export RareEventSampler, run!, moving_average!, return_curve
+export RareEventSampler, run!, moving_average!, return_curve, ensemble_statistics
 """
     moving_average!(A::Vector{FT},timeseries::Vector{FT}, window::Int)
                    where {FT<:AbstractFloat}
@@ -252,4 +252,11 @@ function sample_and_rewrite_history!(sim, u2, copies, i1, i2, i)
     sim.R[i+1] = mean(scores)
 end
 
+# This has to be modified to plot a particular index of the state vector
+function ensemble_statistics(ensemble, state_index)
+    M = map(x -> x[state_index], reduce(hcat,ensemble))
+    means = mean(M, dims = 2)
+    stds = std(M, dims = 2)
+    return means[:], stds[:]
+end
 end
