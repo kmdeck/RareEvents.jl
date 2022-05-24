@@ -1,7 +1,7 @@
 *.png
+#.jl~
 *.jl~
-*.toml~
-*#
 Manifest.toml
-src/old_code.jl
+*.toml~
+src/old_code*
 examples/ornstein_uhlenbeck_algorithm_orig.jl
