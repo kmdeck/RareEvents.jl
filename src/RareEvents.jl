@@ -3,7 +3,7 @@ using Statistics
 using StatsBase
 using Distributed
 using Random
-
+using Plots
 # Code questions
 # This algorithm is fairly convoluted; how to make more readable?
 # Speed up
@@ -72,19 +72,20 @@ simple estimate for rare events (small fraction exceeding), but
 with poor sampling statistics, can give logarithms(negative numbers)
 for frequent events. I also am not sure how to derive it.
 """
-function return_curve(segment_matrix::Matrix{FT},
+function return_curve(a_m::Vector{FT},
                       ΔT::FT,
-                      p::Vector{FT}
+                      likelihood_ratio::Vector{FT}
                       ) where {FT<:AbstractFloat}
-    a_m = maximum(segment_matrix, dims = 2)[:]
     sort_indices = reverse(sortperm(a_m))
     sorted = a_m[sort_indices]
-    p_sorted = p[sort_indices] 
+    likelihood_ratio_sorted = likelihood_ratio[sort_indices] 
     M = length(a_m)
-    average_fraction_exceeding = cumsum(p_sorted)
+    average_fraction_exceeding = cumsum(likelihood_ratio_sorted)./M
     return_time_naive = ΔT ./  average_fraction_exceeding[1:end-1]
+    σ_avg_f_exceeding = sqrt.((cumsum(likelihood_ratio_sorted.^2.0)./M .-  average_fraction_exceeding.^2.0)./M)
+    σ_rtn_naive = return_time_naive .* σ_avg_f_exceeding[1:end-1]./average_fraction_exceeding[1:end-1]
     #return_time_paper = ΔT ./ log.(1.0 .- average_fraction_exceeding[1:end-1])
-    return sorted[1:end-1],  return_time_naive
+    return sorted[1:end-1],  return_time_naive, σ_rtn_naive
 end
 
 """
