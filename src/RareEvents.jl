@@ -3,7 +3,6 @@ using Statistics
 using StatsBase
 using Distributed
 using Random
-using Plots
 # Code questions
 # This algorithm is fairly convoluted; how to make more readable?
 # Speed up
@@ -30,7 +29,7 @@ function moving_average!(A::Vector{FT},timeseries::Vector{FT}, window::Int) wher
     end
 end
 """
-     return_curve(segment_matrix::Matrix{FT},
+     return_curve(a_m::Vector{FT},
                   ΔT::FT,
                   p::Vector{FT}
                   ) where {FT <:AbstractFloat}
@@ -40,10 +39,9 @@ array and a return time array, by looking at the maximum
 value of M timeseries of interest
 of length N = ΔT/dt, where `dt` is the timestep beween saved values.
 
-The input arguments are: (1) the `segment_matrix` consisting of
-segments of trajectories, size = MxN,
-with values equal to the quantity you are estimating return
-periods for, (2) the timespan ΔT = dt*N over which the maxima
+The input arguments are: (1) the `a_m` vector consisting of
+the maxima of M trajectory segments
+, (2) the timespan ΔT  over which the maxima
 are computed, and (3) a vector of probabilities `p`,
 corresponding to the probability of each segment under the model.
 
@@ -82,7 +80,8 @@ function return_curve(a_m::Vector{FT},
     M = length(a_m)
     average_fraction_exceeding = cumsum(likelihood_ratio_sorted)./M
     return_time_naive = ΔT ./  average_fraction_exceeding[1:end-1]
-    σ_avg_f_exceeding = sqrt.((cumsum(likelihood_ratio_sorted.^2.0)./M .-  average_fraction_exceeding.^2.0)./M)
+    avg_f_squared = cumsum(likelihood_ratio_sorted.^2.0)./M
+    σ_avg_f_exceeding = sqrt.(avg_f_squared .-  average_fraction_exceeding.^2.0)/sqrt(M)
     σ_rtn_naive = return_time_naive .* σ_avg_f_exceeding[1:end-1]./average_fraction_exceeding[1:end-1]
     #return_time_paper = ΔT ./ log.(1.0 .- average_fraction_exceeding[1:end-1])
     return sorted[1:end-1],  return_time_naive, σ_rtn_naive
@@ -253,7 +252,6 @@ function sample_and_rewrite_history!(sim, u2, copies, i1, i2, i)
     sim.R[i+1] = mean(scores)
 end
 
-# This has to be modified to plot a particular index of the state vector
 function ensemble_statistics(ensemble, state_index)
     M = map(x -> x[state_index], reduce(hcat,ensemble))
     means = mean(M, dims = 2)

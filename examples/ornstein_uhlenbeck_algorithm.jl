@@ -4,7 +4,11 @@ using RareEvents
 using Statistics
 using SpecialFunctions
 using Distributed
-include("./ornstein_uhlenbeck.jl")
+using DelimitedFiles
+n_processes = Sys.CPU_THREADS
+addprocs(n_processes)
+
+include("examples/ornstein_uhlenbeck.jl")
 
 dt = 0.1
 # pmap wants a function with a single argument. We iterate over ensemble
@@ -12,17 +16,15 @@ dt = 0.1
 alg_kwargs = ();
 @everywhere evolve_wrapper(tspan) = (u0) -> evolve_ornstein_uhlenbeck1D(u0, tspan, dt, alg_kwargs)
 
-n_processes = Sys.CPU_THREADS
-addprocs(n_processes)
 
 
 Nτ = 5 # Nτ*dt = τ, the resample time
 T_a = 100.0 # total integration time
-N = 1000
+N = 3000
 d = 1
 u0 = zeros(d) # No harm in starting at the same IC here for all ensemble members
-k = 0.3
-ϵ = 0.0
+k = 0.5
+ϵ = 0.05
 score_function(x; k = k, dt =dt) = exp.(k .*sum(x[2:end]+x[1:end-1])/2.0*dt)
 
 sim = RareEventSampler{Float64}(dt, u0, (0.0, T_a), N, Nτ,evolve_wrapper, score_function, ϵ);
@@ -47,13 +49,16 @@ end
 a_m = maximum(moving_average_matrix, dims = 2)[:]
 
 
-event_magnitude, rtn = return_curve(moving_average_matrix, T_a-T, p_n1);
+event_magnitude, rtn, σ_rtn= return_curve(a_m, T_a-T, likelihood_ratio);
 plot1 = plot()
-plot!(log10.(rtn), event_magnitude, ylim = [0,1.0], xlim = [0,15], color = "red", label = "k = 0.3, N=3e3", yticks = [0,0.4,0.8])
 
+plot!(event_magnitude, rtn, ribbon = σ_rtn, yaxis = :log, ylim = [1, 1e10], yticks = [1,1e5,1e10], xticks = [0,0.4,0.8], xlim = [0, 1], label = "")
 
-plot!(rtn, event_magnitude, xerr = σ_rtn, xaxis = :log, ylim = [0,1.0], xlim = [1,1e15], label = "k = 0.5, N=3000", yticks = [0,0.4,0.8],msc = :auto)
+direct_a_m = readdlm("direct_1e8_a_m.csv")
+direct_event_magnitude, direct_rtn, direct_σ_rtn= return_curve(direct_a_m[:], T_a-T, ones(length(direct_a_m[:])));
 
+plot!(direct_event_magnitude, direct_rtn, ribbon = direct_σ_rtn, yaxis = :log, ylim = [1, 1e10], yticks = [1,1e5,1e10], xticks = [0,0.4,0.8], xlim = [0, 1], label = "Direct")
+plot!(legend = :bottomright)
 
 μ, σ = ensemble_statistics(sim.ensemble, 1)
 plot2 = plot(0.0:dt:T_a,μ,grid=false,ribbon=σ,fillalpha=.5)
