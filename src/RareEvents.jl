@@ -192,7 +192,7 @@ function run!(sim)
         i1 = 1+(i)*Nτ
         i2 = 1+(i+1)*Nτ
         solutions = integrate(sim, u1,t1,t2)
-        copies = update_ensemble_and_score!(sim, solutions, i1, i2)
+        copies = update_ensemble_and_score!(sim, solutions, i1, i2, i)
         sample_and_rewrite_history!(sim, u2, copies, i1, i2, i)
         i = i+1
         u1 = copy(u2)
@@ -205,13 +205,14 @@ function integrate(sim, u1,t1,t2)
      return pmap(sim.evolve_single_trajectory((t1,t2)),u1;distributed = false)
 end
 
-function update_ensemble_and_score!(sim, solutions,i1,i2)
+function update_ensemble_and_score!(sim, solutions,i1,i2, i)
     # We need to loop over the original ensemble to get normalized weights
     scores = zeros(sim.N)
     for k in 1:sim.N
         sim.ensemble[k][i1:i2] .= solutions[k]
         scores[k] = sim.score(solutions[k])[1]
     end
+    sim.R[i+1] = mean(scores)
     weights = scores ./ mean(scores)
     copies = Int.(floor.(weights .+ rand(sim.N)))
     return copies
@@ -222,8 +223,7 @@ function sample_and_rewrite_history!(sim, u2, copies, i1, i2, i)
     N = sim.N
     array_u = [[sim.ensemble[k][1:i2],] for k in 1:N]
     # If copies is zero, it is cut. Then shuffle the cloned set.
-    # Then we dont need to sample from it,
-    # as selecting from it in order = a random sample
+    # Selecting from it in order = a random sample
     copied_sample = shuffle!(vcat(sample.(array_u, copies)...))
     N_c = sum(copies)
     scores = zeros(N)
@@ -249,7 +249,7 @@ function sample_and_rewrite_history!(sim, u2, copies, i1, i2, i)
             end
         end
     end
-    sim.R[i+1] = mean(scores)
+   # sim.R[i+1] = mean(scores)
 end
 
 function ensemble_statistics(ensemble, state_index)
