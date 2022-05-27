@@ -6,13 +6,18 @@ using Statistics
 a_k05 = readdlm("k_05_bootstrap.csv")
 lr_k05 = readdlm("k_05_bootstrap_lr.csv")
 a_k03 = readdlm("k_03_bootstrap.csv")
-lr_k05 = readdlm("k_03_bootstrap_lr.csv")
+lr_k03 = readdlm("k_03_bootstrap_lr.csv")
 
 plot1 = plot()
 
 
 a = a_k05
 lr = lr_k05
+N = 600
+T_a = 100
+T = 50.0
+
+
 em = zeros((N-1)*30)
 em = reshape(em, ((N-1),30))
 r = similar(em)
@@ -22,18 +27,36 @@ for i in 1:30
     em[:,i] = event_magnitude
     r[:,i] = rtn
     σr[:,i] = σ_rtn
-    plot!(plot1, em[:,i], r[:,i], label = "")
+    #plot!(plot1, em[:,i], log10.(r[:,i]), label = "")
 end
+a_range = Array(minimum(em):0.03:maximum(em))
+mean_a = zeros(length(a_range)-1)
+mean_rtn = zeros(length(a_range)-1)
+std_rtn = zeros(length(a_range)-1)
+for i in 1:(length(a_range)-1)
+    mask = (em[:] .< a_range[i+1]) .& ( em[:] .>= a_range[i])
+    if sum(mask) >0
+        mean_a[i] = mean(em[:][mask])
+        std_rtn[i] = std(log10.(r[:][mask]))
+        mean_rtn[i] = mean(log10.(r[:][mask]))
+    end
+    
+end
+nonzero = (mean_a .!= 0.0) .& (isnan.(std_rtn) .== 0)
+final_a = mean_a[nonzero]
+final_r = mean_rtn[nonzero]
+final_σr = std_rtn[nonzero]
+plot!(final_a, final_r, ribbon = final_σr, label = "k=0.5")    
+#plot!(em[:,1], log10.(r[:,1]), yerror = σr[:,1]./ r[:,1], label = "k = 0.5 instance")
 
 
+plot!(ylim = [1, 12], yticks = [1,2,4,6,8,10,12], xticks = [0,0.4,0.8], xlim = [0, 1])
 
-plot!(mean(em, dims = 2), mean(r, dims = 2), xticks = [0,0.4,0.8], xlim = [0, 1], label = "", color = "red")
 
-
-direct_a_m = readdlm("direct_1e8_a_m.csv")
+direct_a_m = readdlm("direct_1e7_a_m.csv")
 direct_event_magnitude, direct_rtn, direct_σ_rtn= return_curve(direct_a_m[:], T_a-T, ones(length(direct_a_m[:])));
 
-plot!(direct_event_magnitude, direct_rtn, ribbon = direct_σ_rtn, yaxis = :log, ylim = [1, 1e10], yticks = [1,1e5,1e10], xticks = [0,0.4,0.8], xlim = [0, 1], label = "Direct")
+plot!(direct_event_magnitude, log10.(direct_rtn), ribbon = direct_σ_rtn./ direct_rtn, label = "Direct")
 plot!(legend = :bottomright)
 
 #=

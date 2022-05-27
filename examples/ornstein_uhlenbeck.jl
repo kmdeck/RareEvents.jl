@@ -1,3 +1,4 @@
+using Distributed
 @everywhere using DifferentialEquations: WienerProcess, SDEProblem, solve
 # Stand-in for a more complex Model - returns necessary RHS functions, parameters
 @everywhere function ornstein_uhlenbeck1D_model(θ, σ, t0)

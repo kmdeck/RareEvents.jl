@@ -249,7 +249,8 @@ function sample_and_rewrite_history!(sim, u2, copies, i1, i2, i)
             end
         end
     end
-   # sim.R[i+1] = mean(scores)
+    # This should come before the resampling occurs
+    #sim.R[i+1] = mean(scores)
 end
 
 function ensemble_statistics(ensemble, state_index)
