@@ -4,14 +4,13 @@ using StatsBase
 using Distributed
 using Random
 # Code questions
-# This algorithm is fairly convoluted; how to make more readable?
-# Speed up
 # Repackage the trajectory output in ensemble, hard to access/plot?. What about for different output types (CC Field Vector..)
-# make less dep on DiffEQ eventually store a model? rather than a problem
+# Eventually pass a `model` rather than a `problem`?
 
 # Conceptual questions
 # Why does k = 0.3 give me ~a of 0.3, not 0.6? a~k?
-# How to derive their formula?
+# Why do they look at statistics of a maximum?
+# How to get the rate function
 
 export RareEventSampler, run!, moving_average!, return_curve, ensemble_statistics, N_event
 """
@@ -192,8 +191,9 @@ function RareEventSampler{FT}(dt::FT,
     return RareEventSampler{FT, typeof(ensemble), typeof(evolve_single_trajectory)}(args...)
 end
 
-# Begin at i = 0
+
 function run!(sim)
+    # Begin at i = 0
     u1 = deepcopy([sim.ensemble[k][1] for k in 1:sim.N])
     u2 = deepcopy([sim.ensemble[k][1] for k in 1:sim.N])
     t0 = sim.tspan[1]
@@ -220,6 +220,7 @@ end
 
 function update_ensemble_and_score!(sim, solutions,i1,i2, i)
     # We need to loop over the original ensemble to get normalized weights
+    # R is computed before resampling
     scores = zeros(sim.N)
     for k in 1:sim.N
         sim.ensemble[k][i1:i2] .= solutions[k]
@@ -232,6 +233,9 @@ function update_ensemble_and_score!(sim, solutions,i1,i2, i)
 end
 
 function sample_and_rewrite_history!(sim, u2, copies, i1, i2, i)
+    # Make this more readable. we should just shuffle and draw from an
+    # index array.
+    
     # We need to loop over the data to sample from it N times
     N = sim.N
     array_u = [[sim.ensemble[k][1:i2],] for k in 1:N]
@@ -262,8 +266,6 @@ function sample_and_rewrite_history!(sim, u2, copies, i1, i2, i)
             end
         end
     end
-    # This should come before the resampling occurs
-    #sim.R[i+1] = mean(scores)
 end
 
 function ensemble_statistics(ensemble, state_index)
