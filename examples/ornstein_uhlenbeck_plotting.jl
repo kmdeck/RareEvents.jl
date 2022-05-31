@@ -53,8 +53,9 @@ plot!(final_a, final_r, ribbon = final_σr, label = "k=0.3")
 plot!(ylim = [1, 12], yticks = [1,2,4,6,8,10,12], xticks = [0,0.4,0.8], xlim = [0, 1])
 
 
-direct_a_m = readdlm("direct_1e7_a_m.csv")
-# timestep of 0.25, segments of 100 -> 50 moving average samples
+direct_a_m = readdlm("direct_1e7_a_m_dt_01.csv")
+# timestep of 0.1, segments of ΔT=50 -> 500 moving average samples
+# This needs to be the same.
 direct_event_magnitude, direct_rtn, direct_σ_rtn= return_curve(direct_a_m[:], T_a-T, ones(length(direct_a_m[:])));
 
 plot!(direct_event_magnitude, log10.(direct_rtn), ribbon = direct_σ_rtn./ direct_rtn, label = "Direct")

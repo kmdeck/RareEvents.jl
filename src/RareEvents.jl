@@ -13,7 +13,7 @@ using Random
 # Why does k = 0.3 give me ~a of 0.3, not 0.6? a~k?
 # How to derive their formula?
 
-export RareEventSampler, run!, moving_average!, return_curve, ensemble_statistics
+export RareEventSampler, run!, moving_average!, return_curve, ensemble_statistics, N_event
 """
     moving_average!(A::Vector{FT},timeseries::Vector{FT}, window::Int)
                    where {FT<:AbstractFloat}
@@ -87,6 +87,19 @@ function return_curve(a_m::Vector{FT},
     return sorted[1:end-1],  return_time_naive, σ_rtn_naive
 end
 
+function N_event(a_mn::Matrix{FT},
+                 likelihood_ratio::Vector{FT},
+                 magnitude::Vector{FT}
+                 ) where {FT <: AbstractFloat}
+    Na = zeros(length(magnitude))
+    for i in 1:length(magnitude)-1
+        mask = (a_mn .< magnitude[i+1]) .& ( a_mn .>= magnitude[i])
+        Na[i] = sum(sum(mask, dims = 2) .* likelihood_ratio)
+    end
+    return Na
+end
+
+    
 """
     RareEventSampler{FT<:AbstractFloat, ST,P, ES}
 

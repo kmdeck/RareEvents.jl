@@ -29,6 +29,9 @@ score_function(x; k = k, dt =dt) = exp.(k .*sum(x[2:end]+x[1:end-1])/2.0*dt)
 a_m = zeros(N*30)
 a_m = reshape(a_m, (N,30))
 lr_matrix = similar(a_m)
+a_range = Array(0.0:0.03:1.0)
+Na = zeros(length(a_range)*30)
+Na = reshape(Na, (length(a_range), 30))
 for iter in 1:30
     sim = RareEventSampler{Float64}(dt, u0, (0.0, T_a), N, Nτ,evolve_wrapper, score_function, ϵ);
     
@@ -49,9 +52,12 @@ for iter in 1:30
         moving_average_matrix[i,:] .= moving_average_row
         likelihood_ratio[i] = lr(sol, dt, T_a, k, λ)
     end
+    Na[:,iter] .+= N_event(moving_average_matrix, likelihood_ratio, a_range)
+
     a_m[:,iter] = maximum(moving_average_matrix, dims = 2)[:]
     lr_matrix[:,iter] = likelihood_ratio
 end
+writedlm("k_05_bootstrap_Na.csv", Na)
 writedlm("k_05_bootstrap_lr.csv", lr_matrix)
 writedlm("k_05_bootstrap.csv", a_m)
 
