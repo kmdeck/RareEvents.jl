@@ -23,16 +23,17 @@ T_a = 100.0 # total integration time
 N = 600
 d = 1
 u0 = zeros(d) # No harm in starting at the same IC here for all ensemble members
-k = 0.5
+k = 0.3
 ϵ = 0.05
 score_function(x; k = k, dt =dt) = exp.(k .*sum(x[2:end]+x[1:end-1])/2.0*dt)
-a_m = zeros(N*30)
-a_m = reshape(a_m, (N,30))
+iters = 100
+a_m = zeros(N*iters)
+a_m = reshape(a_m, (N,iters))
 lr_matrix = similar(a_m)
 a_range = Array(0.0:0.03:1.0)
-Na = zeros(length(a_range)*30)
-Na = reshape(Na, (length(a_range), 30))
-for iter in 1:30
+Na = zeros(length(a_range)*iters)
+Na = reshape(Na, (length(a_range), iters))
+for iter in 1:iters
     println(iter)
     sim = RareEventSampler{Float64}(dt, u0, (0.0, T_a), N, Nτ,evolve_wrapper, score_function, ϵ);
     
@@ -58,9 +59,9 @@ for iter in 1:30
     a_m[:,iter] = maximum(moving_average_matrix, dims = 2)[:]
     lr_matrix[:,iter] = likelihood_ratio
 end
-writedlm("k_05_bootstrap_Na.csv", Na)
-#writedlm("k_03_bootstrap_lr.csv", lr_matrix)
-#writedlm("k_03_bootstrap.csv", a_m)
+writedlm("k_03_bootstrap_Na.csv", Na)
+writedlm("k_03_bootstrap_lr.csv", lr_matrix)
+writedlm("k_03_bootstrap.csv", a_m)
 
 #μ, σ = ensemble_statistics(sim.ensemble, 1)
 #plot2 = plot(0.0:dt:T_a,μ,grid=false,ribbon=σ,fillalpha=.5)
