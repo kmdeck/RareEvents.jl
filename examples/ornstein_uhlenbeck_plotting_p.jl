@@ -28,10 +28,15 @@ plot!(a_range[:], log10.(0.03/sqrt(2.0*π*σ^2.0) .* exp.(-1.0 .*(a_range[:] .^2
 plot!(ylabel = "P(a)Δa", xlabel = "a")
 savefig("./p_event_3x.png")
 
+
+
+
 nonzero03 = p03 .!= 0.0
 RT03 = 50.0./p03[nonzero03]
 nonzero05 = p05 .!=0.0
 RT05 = 50.0./p05[nonzero05]
+nonzero_direct = p_direct .!=0.0
+
 RT_direct = 50.0 ./ p_direct[nonzero_direct]
 nonzero_direct = p_direct .!=0.0
 plot(a_range[nonzero03], log10.(RT03), ribbon = σp03[nonzero03]./p03[nonzero03]./log(10.0), label = "k=0.3")
@@ -44,6 +49,8 @@ plot!(ylabel = "Log10(Return Time of Event of Magnitude a)")
 plot!(xlabel = "magnitude of event a")
 
 
+
+# Using the max method
 a_k05 = readdlm("k_05_bootstrap.csv")
 lr_k05 = readdlm("k_05_bootstrap_lr.csv")
 a_k03 = readdlm("k_03_bootstrap.csv")
@@ -51,8 +58,8 @@ lr_k03 = readdlm("k_03_bootstrap_lr.csv")
 
 
 
-a = a_k03
-lr = lr_k03
+a = a_k05
+lr = lr_k05
 N = 600
 T_a = 100
 T = 50.0
@@ -63,11 +70,9 @@ em = reshape(em, ((N-1),iters))
 r = similar(em)
 σr = similar(em)
 for i in 1:iters
-    event_magnitude, rtn, σ_rtn= return_curve(a[:,i], T_a-T, lr[:,i]);
+    event_magnitude, rtn, _= return_curve(a[:,i], T_a-T, lr[:,i]);
     em[:,i] = event_magnitude
     r[:,i] = rtn
-    σr[:,i] = σ_rtn
-    #plot!(plot1, em[:,i], log10.(r[:,i]), label = "")
 end
 mean_a = zeros(length(a_range)-1)
 mean_rtn = zeros(length(a_range)-1)
@@ -76,8 +81,8 @@ for i in 1:(length(a_range)-1)
     mask = (em[:] .< a_range[i+1]) .& ( em[:] .>= a_range[i])
     if sum(mask) >0
         mean_a[i] = mean(em[:][mask])
-        std_rtn[i] = std(log10.(r[:][mask]))
-        mean_rtn[i] = mean(log10.(r[:][mask]))
+        mean_rtn[i] = log10.(mean(r[:][mask]))
+        std_rtn[i] = std(r[:][mask])/mean(r[:][mask])./log(10.0)
     end
     
 end
@@ -85,6 +90,18 @@ nonzero = (mean_a .!= 0.0) .& (isnan.(std_rtn) .== 0)
 final_a = mean_a[nonzero]
 final_r = mean_rtn[nonzero]
 final_σr = std_rtn[nonzero]
-plot!(final_a, final_r, label = "k=0.3 via max")
+plot!(final_a, final_r, label = "k=0.5 via max")
 
 savefig("./rt_event_3x.png")
+
+
+### Fit p = e^-(TI(a)) -> -log(p)/T = I(a)
+poly = fit(a_range[nonzero03], -log.(p03[nonzero03]) ./50.0, 4)
+plot(a_range, poly.(a_range), label = "k = 0.3")
+plot!(xlabel = "a")
+plot!(ylabel = "I(a)")
+poly = fit(a_range[nonzero05], -log.(p05[nonzero05]) ./50.0, 4)
+plot!(a_range, poly.(a_range), label = "k = 0.5")
+poly = fit(a_range[nonzero_direct], -log.(p_direct[nonzero_direct]) ./50.0, 4)
+plot!(a_range, poly.(a_range), label = "direct")
+savefig("./rate_function.png")

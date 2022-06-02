@@ -17,17 +17,14 @@ N = 600
 T_a = 100
 T = 50.0
 
-
-em = zeros((N-1)*30)
-em = reshape(em, ((N-1),30))
+iters = 100
+em = zeros((N-1)*iters)
+em = reshape(em, ((N-1),iters))
 r = similar(em)
-σr = similar(em)
-for i in 1:30
-    event_magnitude, rtn, σ_rtn= return_curve(a[:,i], T_a-T, lr[:,i]);
+for i in 1:iters
+    event_magnitude, rtn, _= return_curve(a[:,i], T_a-T, lr[:,i]);
     em[:,i] = event_magnitude
     r[:,i] = rtn
-    σr[:,i] = σ_rtn
-    #plot!(plot1, em[:,i], log10.(r[:,i]), label = "")
 end
 a_range = Array(minimum(em):0.03:maximum(em))
 mean_a = zeros(length(a_range)-1)
@@ -37,8 +34,9 @@ for i in 1:(length(a_range)-1)
     mask = (em[:] .< a_range[i+1]) .& ( em[:] .>= a_range[i])
     if sum(mask) >0
         mean_a[i] = mean(em[:][mask])
-        std_rtn[i] = std(log10.(r[:][mask]))
-        mean_rtn[i] = mean(log10.(r[:][mask]))
+        mean_rtn[i] = log10.(mean(r[:][mask]))
+        std_rtn[i] = std(r[:][mask])/mean(r[:][mask])./log(10.0)
+        
     end
     
 end
@@ -47,8 +45,12 @@ final_a = mean_a[nonzero]
 final_r = mean_rtn[nonzero]
 final_σr = std_rtn[nonzero]
 plot!(final_a, final_r, ribbon = final_σr, label = "k=0.3")    
-#plot!(em[:,1], log10.(r[:,1]), yerror = σr[:,1]./ r[:,1], label = "k = 0.5 instance")
 
+event_magnitude, rtn, σ_rtn= return_curve(a[:], T_a-T, lr[:]);
+# x = rtn
+# y = log10(x)
+# dy = dx/x/log(10)
+plot!(event_magnitude, log10.(rtn), ribbon = σ_rtn ./rtn ./log(10.0))
 
 plot!(ylim = [1, 12], yticks = [1,2,4,6,8,10,12], xticks = [0,0.4,0.8], xlim = [0, 1])
 
