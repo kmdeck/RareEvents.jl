@@ -38,8 +38,8 @@ lr_k03 = readdlm("k_03_bootstrap_lr.csv")
 
 
 
-a = a_k05
-lr = lr_k05
+a = a_k03
+lr = lr_k03
 N = 600
 T_a = 100
 T = 50.0
@@ -70,18 +70,24 @@ nonzero = (mean_a .!= 0.0) .& (isnan.(std_rtn) .== 0)
 final_a = mean_a[nonzero]
 final_r = mean_rtn[nonzero]
 final_σr = std_rtn[nonzero]
-plot!(final_a, final_r, label = "k=0.5 via max")
+plot!(final_a, final_r, label = "k=0.3 via max")
 
 savefig("./rt_event_3x.png")
 
 
 ### Fit p = e^-(TI(a)) -> -log(p)/T = I(a)
-poly = fit(a_range[nonzero03], -log.(p03[nonzero03]) ./50.0, 4)
-plot(a_range, poly.(a_range), label = "k = 0.3")
+plot3 = plot()
+for i in 1:1:6
+    Na = readdlm(files[i])
+    N = mean(Na, dims =2 )
+    σN = std(Na, dims =2 )
+    p = N[:]./sum(N)
+    σp = σN[:] / sum(N)
+    nonzero = p .!= 0.0
+
+    poly = fit(a_range[nonzero], -log.(p[nonzero]) ./50.0, 6)
+    plot!(plot3, a_range, poly.(a_range), label = titles[i])
+end
 plot!(xlabel = "a")
 plot!(ylabel = "I(a)")
-poly = fit(a_range[nonzero05], -log.(p05[nonzero05]) ./50.0, 4)
-plot!(a_range, poly.(a_range), label = "k = 0.5")
-poly = fit(a_range[nonzero_direct], -log.(p_direct[nonzero_direct]) ./50.0, 4)
-plot!(a_range, poly.(a_range), label = "direct")
 savefig("./rate_function.png")
