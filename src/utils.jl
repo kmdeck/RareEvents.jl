@@ -1,17 +1,19 @@
 export moving_average!, return_curve, ensemble_statistics, N_event, likelihood_ratio
 
 """
-    moving_average!(A::Vector{FT},timeseries::Vector{FT}, window::Int)
-                   where {FT<:AbstractFloat}
+    moving_average!(A::Vector,timeseries::Vector, window::Int)
 
 Computes the moving average 1/T ∫_t^(t+T) timeseries(t') dt',
 which is equal to the mean of timeseries[i:i+window],
 where window = T/dt, and A is the array where the resulting
 timeseries of moving averages is stored.
+
+For a timeseries which is a vector of vectors, this returns the 
+moving average for each dimension.
 """
-function moving_average!(A::Vector{FT},timeseries::Vector{FT}, window::Int) where {FT<:AbstractFloat}
-    for i in 1:length(A)
-        A[i] = mean(timeseries[i:i+window])
+function moving_average!(A::Matrix,timeseries::Vector, window::Int)
+    for i in 1:size(A)[1]
+        A[i,:] = mean(timeseries[i:i+window-1])
     end
 end
 """
@@ -68,13 +70,13 @@ function return_curve(a_m::Vector{FT},
 end
 
 function N_event(a_mn::Matrix{FT},
-                 likelihood_ratio::Vector{FT},
+                 likelihood_ratio::FT,
                  magnitude::Vector{FT}
                  ) where {FT <: AbstractFloat}
-    Na = zeros(length(magnitude))
+    Na = Matrix{FT}(undef,length(magnitude)-1,size(a_mn)[2])
     for i in 1:length(magnitude)-1
         mask = (a_mn .< magnitude[i+1]) .& ( a_mn .>= magnitude[i])
-        Na[i] = sum(sum(mask, dims = 2) .* likelihood_ratio)
+        Na[i,:] = sum(mask, dims = 1) * likelihood_ratio
     end
     return Na
 end
