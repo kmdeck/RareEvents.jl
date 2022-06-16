@@ -2,7 +2,7 @@ using Revise
 using RareEvents
 using Statistics
 using DelimitedFiles
-
+using LinearAlgebra
 include("examples/ornstein_uhlenbeck.jl")
 n_processes = Sys.CPU_THREADS
 addprocs(n_processes)
@@ -10,22 +10,23 @@ addprocs(n_processes)
 dt = 0.1
 alg_kwargs = ();
 FT = Float64
-θ = [1.0 0.0; 0.0 1.0]
-σ = [1.0 0.0; 0.0 1.0]
-d = 2
+d = 10
+θ = Diagonal(ones(d)) .+ zeros(Float64,d,d)
+σ = Diagonal(ones(d)) .+ zeros(Float64,d,d)
+
 model = OrnsteinUhlenbeck{FT}(θ, σ, d)
 @everywhere evolve_wrapper(tspan) = (u0) -> evolve_stochastic_system(model, u0, tspan, dt, alg_kwargs)
 
 τ = 0.5
 nensemble = 600
 u0 = [copy(zeros(d)) for i in 1:nensemble]
-k = 0.3
+k = 0.5
 ϵ = 0.001
-metric(y) = y[1]#mean(map(abs, y))
+metric(y) = sum(y)#mean(map(abs, y)) # vs y[1]
 T_a = 100.0
 tspan = (0.0, T_a)
 
-iters = 10
+iters = 30
 # Vector of length iters. Each element is an nensemble x d matrix
 a_m = [zeros(FT, nensemble, d) for k in 1:iters]
 # vector of length iters. Each element is a vector of length nensemble
@@ -57,7 +58,8 @@ for iter in 1:iters
 end
 
 rmprocs([p for p in procs() if p != myid()])
+path = string("examples/ornstein_uhlenbeck_output/algorithm/k_",string(k),"_")
+writedlm(string(path, "N_mixed_scored10.csv"), Na)
+writedlm(string(path, "lr_mixed_scored10.csv"), lr_matrix)
+writedlm(string(path, "maxes_mixed_score10.csv"), a_m)
 
-writedlm("k_03_bootstrap_Na_refactored.csv", Na)
-writedlm("k_03_bootstrap_lr_refactored.csv", lr_matrix)
-writedlm("k_03_bootstrap_refactored.csv", a_m)

@@ -3,52 +3,50 @@ using Plots
 using RareEvents
 using Statistics
 using Polynomials
-Na_k03 = readdlm("k_03_bootstrap_Na_refactored.csv")
-Na_k05 = readdlm("k_05_bootstrap_Na_refactored.csv")
-Na_direct = readdlm("direct_1e7_Na_dt_01_refactored.csv")
-N03 = mean(Na_k03, dims =2 )
-σN03 = std(Na_k03, dims =2 )
-p03 = N03[:]./sum(N03)
-σp03 = σN03[:] / sum(N03)
-N05 = mean(Na_k05, dims =2 )
-σN05 = std(Na_k05, dims =2 )
-p05 = N05[:]./sum(N05)
-σp05 = σN05[:] / sum(N05)
-a_range = Array(0.0:0.03:1.0)
-p_direct = Na_direct[:]./sum(Na_direct)
+
+path = string("ornstein_uhlenbeck_output/algorithm/k_")
+files = [string(path, "0.3_N.csv"),string(path, "0.5_N.csv"),string(path, "0.3_N_mixed_score.csv"),string(path, "0.5_N_mixed_score.csv"),string(path, "0.7_N_mixed_score.csv"),string(path, "0.5_N_mixed_score10.csv")]
+titles = ["k = 0.3", "k = 0.5", "k = 0.3 mixed", "k = 0.5 mixed", "k = 0.7 mixed", "k=0.5, d= 10, mixed"]
 plot1 = plot()
-# if y = log10(p), σy = σp/p/ln(10)
-plot!(a_range[:], log10.(p03), ribbon = σp03[:] ./ p03[:] ./log(10.0), label = "k =0.3")
-plot!(a_range[:], log10.(p05), ribbon = σp05[:] ./ p05[:] ./log(10.0), label = "k =0.5")
-plot!(a_range[:], log10.(p_direct), label = "Direct")
-plot!(legend = :bottomleft)
+plot2 = plot()
+plot3 = plot()
 
-σ = 0.142
-plot!(a_range[:], log10.(0.03/sqrt(2.0*π*σ^2.0) .* exp.(-1.0 .*(a_range[:] .^2.0 ./(2.0*σ^2.0)))), label= "Gaussian")
-plot!(ylabel = "P(a)Δa", xlabel = "a")
-savefig("./p_event_3x.png")
+d = 2
+a_range = Array(0.0:0.03:1.0)
+a = 0.5*(a_range[1:end-1] .+ a_range[2:end])
+bins = length(a_range)-1
+for i in [1,2,3,4]
+    Na = readdlm(files[i])
+    for j in 2:2
+        N = mean(Na[:,(j-1)*bins+1:j*bins],dims = 1)
+        σN =  std(Na[:,(j-1)*bins+1:j*bins],dims = 1)
+        p =  N[:]./sum(N[:])
+        σp = σN[:]./sum(N[:])
+        nonzero = p .!= 0.0
+        plot!(plot1,a[nonzero], log10.(p[nonzero]), ribbon = σp[nonzero] ./ p[nonzero] ./log(10.0), label = string(titles[i], ", u",string(j)))
+        
+        RT = 50.0./p[nonzero]
+        plot!(plot2, a[nonzero], log10.(RT), ribbon = σp[nonzero]./p[nonzero]./log(10.0), label = string(titles[i], ", u",string(j)))
+        
+        #poly = fit(a[nonzero], -log.(p[nonzero]) ./50.0, 2)
+        plot!(plot3, a[nonzero], -log.(p[nonzero]) ./50.0,label = string(titles[i], ", u",string(j)))
+       # plot!(plot3, a, poly.(a))
+    end
+    
+end
+σ = 0.141
+plot!(plot1,a_range[:], log10.(0.03/sqrt(2.0*π*σ^2.0) .* exp.(-1.0 .*(a_range[:] .^2.0 ./(2.0*σ^2.0)))), label= "Gaussian")
+plot!(plot1, ylabel = "P(a)Δa", xlabel = "a")
+plot!(plot1, legend = :bottomleft)
+plot!(plot2,ylim = [0,13], xlim = [0,1.0])
+plot!(plot2,legend = :bottomright)
+plot!(plot2,ylabel = "Log10(Return Time of Event of Magnitude a)")
+plot!(plot2,xlabel = "magnitude of event a")
+plot!(plot3,xlabel = "a")
+plot!(plot3,ylabel = "I(a)")
+######
 
-
-
-
-nonzero03 = p03 .!= 0.0
-RT03 = 50.0./p03[nonzero03]
-nonzero05 = p05 .!=0.0
-RT05 = 50.0./p05[nonzero05]
-nonzero_direct = p_direct .!=0.0
-
-RT_direct = 50.0 ./ p_direct[nonzero_direct]
-nonzero_direct = p_direct .!=0.0
-plot(a_range[nonzero03], log10.(RT03), ribbon = σp03[nonzero03]./p03[nonzero03]./log(10.0), label = "k=0.3")
-plot!(a_range[nonzero05], log10.(RT05), ribbon = σp05[nonzero05]./p05[nonzero05]./log(10.0), label = "k=0.5")
-
-plot!(a_range[nonzero_direct], log10.(RT_direct), label = "Direct")
-plot!(ylim = [0,10], xlim = [0,1.0])
-plot!(legend = :bottomright)
-plot!(ylabel = "Log10(Return Time of Event of Magnitude a)")
-plot!(xlabel = "magnitude of event a")
-
-
+#=
 
 # Using the max method
 a_k05 = readdlm("k_05_bootstrap_refactored.csv")
@@ -93,15 +91,4 @@ final_σr = std_rtn[nonzero]
 plot!(final_a, final_r, label = "k=0.3 via max")
 
 savefig("./rt_event_3x.png")
-
-
-### Fit p = e^-(TI(a)) -> -log(p)/T = I(a)
-poly = fit(a_range[nonzero03], -log.(p03[nonzero03]) ./50.0, 4)
-plot(a_range, poly.(a_range), label = "k = 0.3")
-plot!(xlabel = "a")
-plot!(ylabel = "I(a)")
-poly = fit(a_range[nonzero05], -log.(p05[nonzero05]) ./50.0, 4)
-plot!(a_range, poly.(a_range), label = "k = 0.5")
-poly = fit(a_range[nonzero_direct], -log.(p_direct[nonzero_direct]) ./50.0, 4)
-plot!(a_range, poly.(a_range), label = "direct")
-savefig("./rate_function.png")
+=#
