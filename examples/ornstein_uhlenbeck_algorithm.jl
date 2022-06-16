@@ -2,41 +2,38 @@ using Revise
 using RareEvents
 using Statistics
 using DelimitedFiles
-
-
-include("ornstein_uhlenbeck.jl")
+using LinearAlgebra
+include("examples/ornstein_uhlenbeck.jl")
 n_processes = Sys.CPU_THREADS
 addprocs(n_processes)
 
-
 dt = 0.1
-# pmap wants a function with a single argument. We iterate over ensemble
-# members (initial conditions) with fixed tspan for each
 alg_kwargs = ();
 FT = Float64
-θ = [1.0 0.0; 0.0 1.0]
-σ = [1.0 0.0; 0.0 1.0]
-d = 2
+d = 10
+θ = Diagonal(ones(d)) .+ zeros(Float64,d,d)
+σ = Diagonal(ones(d)) .+ zeros(Float64,d,d)
+
 model = OrnsteinUhlenbeck{FT}(θ, σ, d)
 @everywhere evolve_wrapper(tspan) = (u0) -> evolve_stochastic_system(model, u0, tspan, dt, alg_kwargs)
 
 τ = 0.5
 nensemble = 600
 u0 = [copy(zeros(d)) for i in 1:nensemble]
-k = 0.3
+k = 0.5
 ϵ = 0.001
-metric(y) = y[1]#mean(map(abs, y))
+metric(y) = sum(y)#mean(map(abs, y)) # vs y[1]
 T_a = 100.0
 tspan = (0.0, T_a)
 
 iters = 30
-a_m = zeros(nensemble*iters)
-a_m = reshape(a_m, (nensemble,iters))
-lr_matrix = similar(a_m)
+# Vector of length iters. Each element is an nensemble x d matrix
+a_m = [zeros(FT, nensemble, d) for k in 1:iters]
+# vector of length iters. Each element is a vector of length nensemble
+lr_matrix = [zeros(nensemble) for k in 1:iters]
 a_range = Array(0.0:0.03:1.0)
-Na = zeros(length(a_range)*iters)
-Na = reshape(Na, (length(a_range), iters))
-state_index = 1 # index to look at extremes of...needs to generalize
+# Vector of length iters. Each element is a length(a_range)-1 x d matrix
+Na = [zeros(FT,length(a_range)-1,d) for k in 1:iters]
 for iter in 1:iters
     println(iter)
     sim = RareEventSampler{Float64}(dt, τ, tspan,u0, evolve_wrapper, nensemble, metric, k, ϵ)
@@ -44,23 +41,25 @@ for iter in 1:iters
     run!(sim);
     T = 50
     NT = Int64.(round(T/dt))
-    moving_average_matrix = zeros((nensemble, length(sim.ensemble[1])-NT))
-    moving_average_row = zeros(length(sim.ensemble[1])-NT)
+    moving_average_row = Matrix{FT}(undef, length(sim.ensemble[1])-NT,d)
     lr_vector = zeros(nensemble)
     λ = sum(log.(sim.weight_norm))/T_a    
     
     for i in 1:nensemble
-        trajectory = [sim.ensemble[i][j][state_index] for j in 1:length(sim.ensemble[i])]
-        moving_average_row .= moving_average_matrix[i,:]
+        trajectory = [sim.ensemble[i][j] for j in 1:length(sim.ensemble[i])]
         moving_average!(moving_average_row, trajectory, NT)
-        moving_average_matrix[i,:] .= moving_average_row
-        lr_vector[i] = likelihood_ratio(sim, trajectory, λ, T_a)
+        lr = likelihood_ratio(sim, trajectory, λ, T_a)
+        lr_vector[i] = lr
+        Na[iter] .+= N_event(moving_average_row, lr, a_range)
+        a_m[iter][i,:] .= maximum(moving_average_row,dims = 1)[:]
     end
-    Na[:,iter] .+= N_event(moving_average_matrix, lr_vector, a_range)
 
-    a_m[:,iter] = maximum(moving_average_matrix, dims = 2)[:]
-    lr_matrix[:,iter] = lr_vector
+    lr_matrix[iter] .= lr_vector
 end
-writedlm("k_03_bootstrap_Na_refactored.csv", Na)
-writedlm("k_03_bootstrap_lr_refactored.csv", lr_matrix)
-writedlm("k_03_bootstrap_refactored.csv", a_m)
+
+rmprocs([p for p in procs() if p != myid()])
+path = string("examples/ornstein_uhlenbeck_output/algorithm/k_",string(k),"_")
+writedlm(string(path, "N_mixed_scored10.csv"), Na)
+writedlm(string(path, "lr_mixed_scored10.csv"), lr_matrix)
+writedlm(string(path, "maxes_mixed_score10.csv"), a_m)
+
