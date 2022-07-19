@@ -10,8 +10,7 @@ addprocs(n_processes)
 
 
 dt = 0.1
-# pmap wants a function with a single argument. We iterate over ensemble
-# members (initial conditions) with fixed tspan for each
+
 alg_kwargs = ();
 FT = Float64
 θ = [1.0 0.0; 0.0 1.0]
