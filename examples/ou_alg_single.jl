@@ -23,7 +23,7 @@ model = OrnsteinUhlenbeck{FT}(θ, σ, d)
 @everywhere evolve_wrapper(tspan) = (u0) -> evolve_stochastic_system(model, u0, tspan, dt, alg_kwargs)
 
 τ = 0.5
-nensemble = 100
+nensemble = 10
 u0 = [copy(zeros(d)) for i in 1:nensemble]
 k = 0.3
 ϵ = 0.001

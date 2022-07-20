@@ -142,7 +142,10 @@ function run!(sim::RareEventSampler)
         trajectories = integrate(sim, u1,t1,t2)
         score_trajectories!(sim, scores, trajectories, i1, i2)
         compute_ncopies!(sim, ncopies, scores, i)
-        sample_and_rewrite_history!(sim, u2, ncopies, i1, i2, i)
+        # make `replaced` index array
+        #
+        sample_and_rewrite_history!(sim.ensemble, ncopies, i2)
+        perturb_trajectories!(sim, u2, i2)
         i = i+1
         u1 = copy(u2)
     end
@@ -168,6 +171,33 @@ function compute_ncopies!(sim, ncopies,scores, i)
     ncopies .= Int.(floor.(weights .+ rand(sim.nensemble)))
 end
 
+function sample_and_rewrite_history!(ensemble::Vector, frequencies::Array, idx_current::Int)
+    ids_cut = frequencies .== 0
+    ids_kept = frequencies .!= 0
+
+    # TODO: if run inside a worker loop, we sample once for each worker
+    # and copy that over
+    ids_replaced = sample(ids_kept, FrequencyWeights(frequencies[ids_kept]), length(ids_cut))
+    ensemble[ids_cut][1:idx_current] .= ensemble[ids_replaced][1:idx_current]
+
+    # for j in 1:length(idx_cut)
+    #     sim.ensemble[idx_cut[j]][1:i2] .= sim.ensemble[idx_replaced[j]][1:i2]
+    # end
+    nothing
+end
+
+function perturb_trajectories!(sim::RareEventSampler, u2::Array, i2)
+    N = sim.nensemble
+    d = length(u2[1])
+    for j in 1:N
+        u2[j] = sim.ensemble[j][i2] + randn(d)*sim.ϵ
+    end
+end
+
+include("utils.jl")
+end
+
+#=
 function sample_and_rewrite_history!(sim, u2, ncopies, i1, i2, i)
     N = sim.nensemble
     N_c = sum(ncopies)
@@ -184,6 +214,7 @@ function sample_and_rewrite_history!(sim, u2, ncopies, i1, i2, i)
     copies = shuffle!(vcat(sample.(historical_trajectories, ncopies)...))
     
     # We need to loop over N to reset the ensemble to the copied samples.
+
     if N_c > N
         for k in 1:N
             sim.ensemble[k][1:i2] .= copies[k]
@@ -200,6 +231,4 @@ function sample_and_rewrite_history!(sim, u2, ncopies, i1, i2, i)
         end
     end
 end
-
-include("utils.jl")
-end
+=#
