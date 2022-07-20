@@ -2,20 +2,24 @@ using Revise
 using RareEvents
 using Statistics
 using DelimitedFiles
+using LinearAlgebra
 
 
-include("ornstein_uhlenbeck.jl")
+examples_dir = joinpath(pkgdir(RareEvents), "examples")
+include(joinpath(examples_dir, "ornstein_uhlenbeck.jl"))
 n_processes = Sys.CPU_THREADS
 addprocs(n_processes)
+
 
 
 dt = 0.1
 
 alg_kwargs = ();
 FT = Float64
-θ = [1.0 0.0; 0.0 1.0]
-σ = [1.0 0.0; 0.0 1.0]
-d = 2
+d=1
+θ = Diagonal(ones(d)) .+ zeros(Float64,d,d)
+σ = Diagonal(ones(d)) .+ zeros(Float64,d,d)
+
 model = OrnsteinUhlenbeck{FT}(θ, σ, d)
 @everywhere evolve_wrapper(tspan) = (u0) -> evolve_stochastic_system(model, u0, tspan, dt, alg_kwargs)
 
@@ -63,3 +67,14 @@ end
 writedlm("k_03_bootstrap_Na_refactored.csv", Na)
 writedlm("k_03_bootstrap_lr_refactored.csv", lr_matrix)
 writedlm("k_03_bootstrap_refactored.csv", a_m)
+rmprocs([p for p in procs() if p != myid()])
+N03 = mean(Na, dims =2 )
+σN03 = std(Na, dims =2 )
+p03 = N03[:]./sum(N03)
+σp03 = σN03[:] / sum(N03)
+plot(a_range[:], log10.(p03), ribbon = σp03[:] ./ p03[:] ./log(10.0), label = "k =0.3")
+
+# Put direct curve on here too
+σ = 142
+plot!(a_range[:], log10.(0.03/sqrt(2.0*π*σ^2.0) .* exp.(-1.0 .*(a_range[:] .^2.0 ./(2.0*σ^2.0)))), label= "Gaussian")
+plot!(ylabel = "P(a)Δa", xlabel = "a")
