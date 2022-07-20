@@ -169,31 +169,32 @@ function compute_ncopies!(sim, ncopies,scores, i)
 end
 
 function sample_and_rewrite_history!(sim, u2, ncopies, i1, i2, i)
-    # Make this more readable. we should just shuffle and draw from an
-    # index array.
-    
-    # We need to loop over the data to sample from it N times
     N = sim.nensemble
-    array_u = [[sim.ensemble[k][1:i2],] for k in 1:N]
-    # If copies is zero, it is cut. Then shuffle the cloned set.
-    # Selecting from it in order = a random sample
-    copied_sample = shuffle!(vcat(sample.(array_u, ncopies)...))
     N_c = sum(ncopies)
-
     # Dimensionality of state vector
     d = length(u2[1])
-    # We need to loop over it to reset the ensemble to the samples.
+
+    # We need an array of the cloned/kept trajectory histories
+    # which we can then set the sim.ensemble array equal to.
+    historical_trajectories = [[sim.ensemble[k][1:i2],] for k in 1:N]
+
+    # Sample from this such that we have ncopies[i] of trajector i.
+    # Then shuffle it, so that selecting from it in order is
+    # equivalent to a random sample.
+    copies = shuffle!(vcat(sample.(historical_trajectories, ncopies)...))
+    
+    # We need to loop over N to reset the ensemble to the copied samples.
     if N_c > N
         for k in 1:N
-            sim.ensemble[k][1:i2] .= copied_sample[k]
+            sim.ensemble[k][1:i2] .= copies[k]
             u2[k] = sim.ensemble[k][i2] + randn(d)*sim.ϵ
         end
     else
         for k in 1:N_c
-            sim.ensemble[k][1:i2] .= copied_sample[k]
+            sim.ensemble[k][1:i2] .= copies[k]
             u2[k] = sim.ensemble[k][i2] + randn(d)*sim.ϵ
             if k+N_c <= N # start over at the beginning if sum(copies) <N
-                sim.ensemble[k+N_c][1:i2] .= copied_sample[k]
+                sim.ensemble[k+N_c][1:i2] .= copies[k]
                 u2[k+N_c] = sim.ensemble[k+N_c][i2] + randn(d)*sim.ϵ
             end
         end

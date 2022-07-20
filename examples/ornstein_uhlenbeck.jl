@@ -1,6 +1,5 @@
 using Distributed
 @everywhere using DifferentialEquations: WienerProcess, SDEProblem, solve
-# Stand-in for a more complex Model - returns necessary RHS functions, parameters
 
 struct OrnsteinUhlenbeck{FT <:AbstractFloat}
     θ::Union{FT, Matrix{FT}}
@@ -19,11 +18,6 @@ end
     p = (θ = model.θ, σ = model.σ)
     return deterministic_tendency!, stochastic_tendency!, p
 end
-# Sets up the simulation - whatever your problem needs to be integrated
-# forwards in time with output saved every dt, given IC, tspan,
-# and other sim_kwargs
-
-## Noise process should be part of OU?
 
 @everywhere function evolve_stochastic_system(model::OrnsteinUhlenbeck, u0, tspan, dt, alg_kwargs)
     deterministic_tendency!, stochastic_tendency!, p = stochastic_system(model)
