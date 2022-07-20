@@ -17,7 +17,7 @@ end
 """
      return_curve(a_m::Vector{FT},
                   ΔT::FT,
-                  p::Vector{FT}
+                  lr::Vector{FT}
                   ) where {FT <:AbstractFloat}
 
 Estimates the return curve, returning an event magnitude 
@@ -28,9 +28,10 @@ of length N = ΔT/dt, where `dt` is the timestep beween saved values.
 The input arguments are: (1) the `a_m` vector consisting of
 the maxima of M trajectory segments
 , (2) the timespan ΔT  over which the maxima
-are computed, and (3) a vector of probabilities `p`,
-corresponding to the probability of each segment under the model.
-
+are computed, and (3) a vector of likelihood raiots `lr`,
+equal to the ratio of the target distribution to the importance
+distribution
+.
 This estimates the return curve using what I would predict
 from a Poisson process, Return Time (a) = ΔT*M/q(a), where 
 q is the observed number of segments with maxima
@@ -53,18 +54,24 @@ in descending order.
 """
 function return_curve(a_m::Vector{FT},
                       ΔT::FT,
-                      likelihood_ratio::Vector{FT}
+                      lr::Vector{FT}
                       ) where {FT<:AbstractFloat}
     sort_indices = reverse(sortperm(a_m))
     sorted = a_m[sort_indices]
-    likelihood_ratio_sorted = likelihood_ratio[sort_indices] 
+    lr_sorted = lr[sort_indices] 
     M = length(a_m)
-    average_fraction_exceeding = cumsum(likelihood_ratio_sorted)./M
-    return_time_naive = ΔT ./  average_fraction_exceeding[1:end-1]
-    avg_f_squared = cumsum(likelihood_ratio_sorted.^2.0)./M
-    σ_avg_f_exceeding = sqrt.(avg_f_squared .-  average_fraction_exceeding.^2.0)/sqrt(M)
-    σ_rtn_naive = return_time_naive .* σ_avg_f_exceeding[1:end-1]./average_fraction_exceeding[1:end-1]
-    return sorted[1:end-1],  return_time_naive, σ_rtn_naive
+    # γa = P(X > a)
+    γ = cumsum(lr_sorted)./M
+
+    ceiling = γ .>=1
+    γ[ceiling] .= 0.9999
+    
+    return_time_naive = ΔT ./  γ
+    return_time_paper = -ΔT ./ log.(1.0 .- γ)
+    γ² = cumsum(lr_sorted.^2.0)./M
+    σ_γ = sqrt.(γ² .-  γ.^2.0)/sqrt(M)
+    σ_rtn = return_time_naive .* σ_γ./γ
+    return sorted,  return_time_naive, return_time_paper, σ_rtn
 end
 
 function N_event(a_mn::Matrix{FT},
