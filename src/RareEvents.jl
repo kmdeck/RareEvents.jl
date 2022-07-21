@@ -142,6 +142,7 @@ function run!(sim::RareEventSampler)
         trajectories = integrate(sim, u1,t1,t2)
         score_trajectories!(sim, scores, trajectories, i1, i2)
         compute_ncopies!(sim, ncopies, scores, i)
+        #sample_and_rewrite_history!(sim, u2, ncopies, i1, i2, i)
         sample_and_rewrite_history!(sim.ensemble, ncopies, i2)
         perturb_trajectories!(sim, u2, i2)
         i = i+1
@@ -167,36 +168,6 @@ function compute_ncopies!(sim, ncopies,scores, i)
     sim.weight_norm[i+1] = mean(scores)
     weights = scores ./ mean(scores)
     ncopies .= Int.(floor.(weights .+ rand(sim.nensemble)))
-end
-
-function sample_and_rewrite_history!(ensemble::Vector, frequencies::Array, idx_current::Int)
-    ids = Array(1:1:length(frequencies))
-    ids_cut = ids[frequencies .== 0]
-    ids_kept = ids[frequencies .!= 0]
-
-    # TODO: if run inside a worker loop, we sample once for each worker
-    # and copy that over
-    ids_replaced = sample(ids_kept, FrequencyWeights(frequencies[ids_kept]), length(ids_cut))
-    for j in 1:length(ids_cut)
-        ensemble[ids_cut[j]][1:idx_current] .= ensemble[ids_replaced[j]][1:idx_current]
-    end
-    # to do: look into why this broadcast does not work. But note that in
-    # distributed case, we would be handling one element at a time anyways.
-    # ensemble[ids_cut][1:idx_current] .= ensemble[ids_replaced][1:idx_current]
-
-    nothing
-end
-
-function perturb_trajectories!(sim::RareEventSampler, u_current::Array, idx_current)
-    N = sim.nensemble
-    d = length(u_current[1])
-    for j in 1:N
-        u_current[j] = sim.ensemble[j][idx_current] + randn(d)*sim.ϵ
-    end
-    nothing
-end
-
-include("utils.jl")
 end
 
 #=
@@ -233,4 +204,63 @@ function sample_and_rewrite_history!(sim, u2, ncopies, i1, i2, i)
         end
     end
 end
+=#
+include("utils.jl")
+
+
+
+function sample_and_rewrite_history!(ensemble::Vector, frequencies::Array, idx_current::Int)
+    N = length(frequencies)
+    cloned_ids = vcat([repeat([k], frequencies[k]) for k in 1:N]...)
+    if sum(frequencies) < N
+        ids_kept = sample(cloned_ids, N)
+    else
+        ids_kept = sample(cloned_ids, N, replace = false)
+    end
+    # This isnt quite right...
+    for idx in 1:1:N
+        if !in(idx, ids_kept)
+            idx_replacement = sample(ids_kept)
+            ensemble[idx][1:idx_current] .= ensemble[idx_replacement][1:idx_current]
+        end
+    end
+    nothing
+end
+function perturb_trajectories!(sim::RareEventSampler, u_current::Array, idx_current)
+    N = sim.nensemble
+    d = length(u_current[1])
+    for j in 1:N
+        u_current[j] = sim.ensemble[j][idx_current] + randn(d)*sim.ϵ
+    end
+    nothing
+end
+
+end
+            
+
+#=
+function sample_and_rewrite_history!(ensemble::Vector, frequencies::Array, idx_current::Int)
+    ids = Array(1:1:length(frequencies))
+    ids_cut = ids[frequencies .== 0]
+    ids_kept = ids[frequencies .!= 0]
+
+    # TODO: if run inside a worker loop, we sample once for each worker
+    # and copy that over
+    if sum(frequencies) < length(frequencies)
+        ids_replaced = sample(ids_kept, FrequencyWeights(frequencies[ids_kept]), length(ids_cut))
+    else
+        ids_replaced = sample(ids_kept, FrequencyWeights(frequencies[ids_kept]), length(ids_cut), replace = false)
+    end
+    
+    for j in 1:length(ids_cut)
+        ensemble[ids_cut[j]][1:idx_current] .= ensemble[ids_replaced[j]][1:idx_current]
+    end
+    # to do: look into why this broadcast does not work. But note that in
+    # distributed case, we would be handling one element at a time anyways.
+    # ensemble[ids_cut][1:idx_current] .= ensemble[ids_replaced][1:idx_current]
+
+    nothing
+end
+
+
 =#
