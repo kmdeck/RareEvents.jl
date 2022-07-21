@@ -1,4 +1,7 @@
 name = "RareEvents"
+uuid = "22a25381-1f22-461a-a2b2-c77304347dee"
+authors = "Clima Research"
+version = "0.1.0"
 
 [deps]
 ClimaCore = "d414da3d-4745-48bb-8d80-42e94e092884"
