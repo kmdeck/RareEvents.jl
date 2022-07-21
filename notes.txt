@@ -1,0 +1,107 @@
+Algorithm steps
+for each resample time indexed by k - starts at 0
+    
+    Would be distributed:
+    for each ensemble member j
+        if k >0
+            if j \in cut_index_array
+                # Question: Will we ever be in a situation where trajectory j is overwritten (replaced by another)
+                # but another ensemble member is assigned to be a replaced by a clone of j and no longer has access to it.
+                read the trajectory indexed by `replaced[j]` from t=0 to t_{k}
+                write to your allocated spot, replacing your own
+            end
+            add noise to the solution at t_k 
+        end
+
+        integrate member j from t_{k-1} to t_k, starting from u_{k-1}
+        store in allocated spot in shared array (DistributedArrays.jl)
+        compute score using u_{k-1} to u_k (smaller D array?)
+    end
+    
+    Centralized tasks:
+    1. Obtain scores from all members, compute normalization = mean. z[k] = norm # Score = e^(c*integral)
+    2. Compute weight_j = score_j/norm for all j # Normal array of length n_ensemble # # Weights are normalized to sum to N
+    3. Compute n_copies_j for all j  # Normal array of length n_ensemble # Sum(n_copies) could be > n_ensemble or < n_ensemble
+    4. Determine which ensemble members are cut, make a cut_index array.
+    5. For each cut trajectory, roll many sided die with probabilities per side based on n_copies (or weights??)
+    5. Create replaced_index array that is the same size as cut_index?
+    
+
+end
+
+
+1a. decide which trajectories gets cut based on score (those with n_copies = 0)
+1b. Make a cut_index array (when we loop over the ensemble, ask if ensemble member index is in the cut index array?)
+2. generate a random array of indices of remaining trajectories (based on n_copies[n_copies !=0])
+    This represents the many sided dice with different probabiilties for different sides.
+    E.g. if 1 has 3 copies, and 6 has 2 copies, we would haev [1,1,1,6,6]
+3. When we loop over ensemble members, if the traj is in the cut_index array, sample from [1,1,1,6,6] at random *or*
+    sample from [1,6] with probability [3/5, 2/5].
+
+
+
+1 1 1 1 1 cut
+2 2 2 2 2 copied
+
+
+# Rewrite first file of  ensemble 1
+2 2 2 2 2  | 2' 2' 2' 2' 2'
+2 2 2 2 2  | 2  2  2  2  2
+
+# Dont rewrite but append and reconstruct later
+1 1 1 1 1  | 2' 2' 2' 2' 2' # this was replaced by 2
+2 2 2 2 2  | 2  2  2  2  2
+
+# Delete and reconstruct later
+2' 2' 2' 2' 2' # this was replaced by 2
+2 2 2 2 2  | 2  2  2  2  2
+
+# after each round you have an array of nodes
+ensemble_nodes = [n21, n22, n23]
+
+# init step
+ensemble_nodes = [Node(first_file, nothing), etc...]
+
+# updating step 
+ensemble_nodes = [n21, n22, Node(new_file, n22)]
+
+# reconstruct
+for node in ensemble_nodes
+    values = []
+    while node.parent
+        value = node.value
+        push!(values, value)
+        node = node.parent
+    end
+    make_trajectory(values)
+end
+
+
+
+# What we tried originally
+#=
+function sample_and_rewrite_history!(ensemble::Vector, frequencies::Array, idx_current::Int)
+    ids = Array(1:1:length(frequencies))
+    ids_cut = ids[frequencies .== 0]
+    ids_kept = ids[frequencies .!= 0]
+
+    # TODO: if run inside a worker loop, we sample once for each worker
+    # and copy that over
+    if sum(frequencies) < length(frequencies)
+        ids_replaced = sample(ids_kept, FrequencyWeights(frequencies[ids_kept]), length(ids_cut))
+    else
+        ids_replaced = sample(ids_kept, FrequencyWeights(frequencies[ids_kept]), length(ids_cut), replace = false)
+    end
+    
+    for j in 1:length(ids_cut)
+        ensemble[ids_cut[j]][1:idx_current] .= ensemble[ids_replaced[j]][1:idx_current]
+    end
+    # to do: look into why this broadcast does not work. But note that in
+    # distributed case, we would be handling one element at a time anyways.
+    # ensemble[ids_cut][1:idx_current] .= ensemble[ids_replaced][1:idx_current]
+
+    nothing
+end
+
+
+=#
