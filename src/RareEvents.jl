@@ -135,6 +135,7 @@ function run!(sim::RareEventSampler)
     nsteps_per_resample = Int(div(sim.τ, sim.dt, RoundUp))
     
     map(0:(nresample-1)) do i
+        
         t2 = t0+(i+1)*sim.τ
         t1 =  t0+ i*sim.τ
         i1 = 1+(i)*nsteps_per_resample 
@@ -145,9 +146,12 @@ function run!(sim::RareEventSampler)
         score_trajectories!(sim, scores, trajectories, i1, i2, i)
         
         compute_ncopies!(ncopies, scores, sim.nensemble)
-        
-        sample_and_rewrite_history!(sim.ensemble, ncopies, i2, MersenneTwister(i2))
-        perturb_trajectories!(sim, u2, i2)
+
+        # The goal is to move this to the start of the loop somehow
+        # because then all worker stuff would be in a single part.
+        rng = MersenneTwister(i2)
+        sample_and_rewrite_history!(sim.ensemble, ncopies, i2, rng)
+        perturb_trajectories!(u2, sim.ensemble, sim.nensemble, i2, sim.ϵ)# may want rng here?
         u1 = copy(u2)
         i = i+1
     end
@@ -173,8 +177,7 @@ function compute_ncopies!(ncopies::Array,scores::Array, nensemble::Int)
     nothing
 end
 
-
-function sample_and_rewrite_history!(ensemble::Vector, frequencies::Array, idx_current::Int, rng)
+function sample_ids(ensemble::Vector, frequencies::Array, rng)
     nensemble = length(frequencies)
     ids = Array(1:1:nensemble)
     ncopies = sum(frequencies)
@@ -186,7 +189,8 @@ function sample_and_rewrite_history!(ensemble::Vector, frequencies::Array, idx_c
         ids_chosen = copied_id_set[1:nensemble]
     end
     
-    # Wow  - for some reason the below is different from the above.  ¯\_(ツ)_/¯
+    # Wow  - for some reason the below is different
+    # from the above.  ¯\_(ツ)_/¯
     #if sum(frequencies) < nensemble
     #    ids_chosen = sample(copied_id_set, nensemble)
     #else
@@ -208,7 +212,15 @@ function sample_and_rewrite_history!(ensemble::Vector, frequencies::Array, idx_c
     # Create a list where the cloned ids appear as many times as they are cloned.
     # By construction, this has the same length as ids_to_be_cut.
     cloned_id_set = vcat([repeat([ids_to_be_cloned[k]], nclones[k]) for k in 1:length(ids_to_be_cloned)]...)
+    return ids_to_be_cut, cloned_id_set
+end
 
+
+function sample_and_rewrite_history!(ensemble::Vector, frequencies::Array, idx_current::Int, rng)
+    # This has to be done centrally
+    ids_to_be_cut, cloned_id_set = sample_ids(ensemble, frequencies, rng)
+
+    # This would be done per worker.
     # Replace cut ids with the cloned ids.
     for j in 1:length(ids_to_be_cut)
         idx_cut = ids_to_be_cut[j]
@@ -219,11 +231,10 @@ function sample_and_rewrite_history!(ensemble::Vector, frequencies::Array, idx_c
 end
 
 
-function perturb_trajectories!(sim::RareEventSampler, u_current::Array, idx_current)
-    N = sim.nensemble
+function perturb_trajectories!(u_current::Array, ensemble::Vector, nensemble::Int, idx_current::Int, ϵ::Real)
     d = length(u_current[1])
-    for j in 1:N
-        u_current[j] = sim.ensemble[j][idx_current] + randn(d)*sim.ϵ
+    for j in 1:nensemble
+        u_current[j] = ensemble[j][idx_current] + randn(d)*ϵ
     end
     nothing
 end
