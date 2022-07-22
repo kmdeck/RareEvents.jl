@@ -2,11 +2,14 @@ using Plots
 using RareEvents
 using Statistics
 using DelimitedFiles
-include("ornstein_uhlenbeck.jl")
-θ = 1.0
-σ = 1.0
-d = 1
-model = OrnsteinUhlenbeck{Float64}(θ, σ, d)
+
+examples_dir = joinpath(pkgdir(RareEvents), "examples")
+include(joinpath(examples_dir, "ornstein_uhlenbeck.jl"))
+
+d=1
+θ = Diagonal(ones(d)) .+ zeros(Float64,d,d)
+σ = Diagonal(ones(d)) .+ zeros(Float64,d,d)
+model = OrnsteinUhlenbeck{FT}(θ, σ, d)
 
 # Carry out integration
 t0 =0.0
@@ -43,8 +46,3 @@ for i in 1:30
 end
 writedlm("direct_1e7_a_m_dt_01_refactored.csv", a_m)
 writedlm("direct_1e7_Na_dt_01_refactored.csv", Na)
-FT = Float64
-event_magnitude, rtn, σ_rtn = return_curve(a_m[:], FT(ΔT),  FT.(ones(length(a_m[:]))))
-
-plot(event_magnitude, rtn, ribbon = σ_rtn, yaxis = :log, ylim = [1, 1e10], yticks = [1,1e5,1e10], xticks = [0,0.4,0.8], xlim = [0, 1], label = "Direct")
-plot!(legend = :bottomright)

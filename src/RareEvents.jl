@@ -14,7 +14,7 @@ running the rare event algorithm.
 """  
 
 struct RareEventSampler{FT<:AbstractFloat, ST,P}
-    "How often output is saved from the integrations"
+    "The timestep, and how often output is saved from the integrations"
     dt::FT
     "Resampling time"
     τ::FT
@@ -125,81 +125,138 @@ Runs the rare event algorithm according to the properties of `sim`.
 function run!(sim::RareEventSampler)
     # Preallocation
     u1 = deepcopy([sim.ensemble[k][1] for k in 1:sim.nensemble])
-    u2 = deepcopy([sim.ensemble[k][1] for k in 1:sim.nensemble])
     scores = zeros(sim.nensemble)
-    ncopies = zeros(Int, sim.nensemble)
+    ncopies = ones(Int, sim.nensemble)
     
-    t0 = sim.tspan[1]
-    t_integration = sim.tspan[2] - t0
+    t_start = sim.tspan[1]
+    t_integration = sim.tspan[2] - t_start
     nresample = Int(div(t_integration, sim.τ, RoundUp))
     nsteps_per_resample = Int(div(sim.τ, sim.dt, RoundUp))
     
     map(0:(nresample-1)) do i
-        t2 = t0+(i+1)*sim.τ
-        t1 =  t0+ i*sim.τ
+        rng = MersenneTwister(i)
+        
+        t2 = t_start+(i+1)*sim.τ
+        t1 = t_start+ i*sim.τ
         i1 = 1+(i)*nsteps_per_resample 
-        i2 = 1+(i+1)*nsteps_per_resample 
+        i2 = 1+(i+1)*nsteps_per_resample
+
         trajectories = integrate(sim, u1,t1,t2)
-        score_trajectories!(sim, scores, trajectories, i1, i2)
-        compute_ncopies!(sim, ncopies, scores, i)
-        sample_and_rewrite_history!(sim, u2, ncopies, i1, i2, i)
+        score_trajectories!(sim, scores, trajectories, i1, i2, i)
+        compute_ncopies!(ncopies, scores, sim.nensemble, rng)
+        sample_and_rewrite_history!(sim.ensemble, ncopies, i2, rng)
+        perturb_trajectories!(u1, sim.ensemble, sim.nensemble, i2, sim.ϵ)# may want rng here?
+
         i = i+1
-        u1 = copy(u2)
     end
 end
 
 
-function integrate(sim::RareEventSampler, u1,t1,t2)
-     return pmap(sim.evolve_single_trajectory((t1,t2)),u1;distributed = sim.distributed)
+function integrate(sim::RareEventSampler, u_prev,t_prev,t_curr)
+     return pmap(sim.evolve_single_trajectory((t_prev,t_curr)),u_prev;distributed = sim.distributed)
 end
 
-function score_trajectories!(sim::RareEventSampler, scores, trajectories,i1,i2)
-    # We need to loop over the original ensemble to get the scores
-    # so that we can get the mean score, before resampling.
+function score_trajectories!(sim::RareEventSampler, scores, trajectories, idx_prev::Int,idx_current::Int, idx_resample::Int)
     for k in 1:sim.nensemble
-        sim.ensemble[k][i1:i2] .= trajectories[k]
+        sim.ensemble[k][idx_prev:idx_current] .= trajectories[k]
         scores[k] = score(sim,trajectories[k])
     end
+    sim.weight_norm[idx_resample+1] = mean(scores)
+    nothing
 end
 
-function compute_ncopies!(sim, ncopies,scores, i)
-    sim.weight_norm[i+1] = mean(scores)
+function compute_ncopies!(ncopies::Array,scores::Array, nensemble::Int, rng)
     weights = scores ./ mean(scores)
-    ncopies .= Int.(floor.(weights .+ rand(sim.nensemble)))
+    ncopies .= Int.(floor.(weights .+ rand(rng, nensemble)))
+    nothing
 end
 
-function sample_and_rewrite_history!(sim, u2, ncopies, i1, i2, i)
-    N = sim.nensemble
-    N_c = sum(ncopies)
-    # Dimensionality of state vector
-    d = length(u2[1])
-
-    # We need an array of the cloned/kept trajectory histories
-    # which we can then set the sim.ensemble array equal to.
-    historical_trajectories = [[sim.ensemble[k][1:i2],] for k in 1:N]
-
-    # Sample from this such that we have ncopies[i] of trajector i.
-    # Then shuffle it, so that selecting from it in order is
-    # equivalent to a random sample.
-    copies = shuffle!(vcat(sample.(historical_trajectories, ncopies)...))
+function sample_ids(ensemble::Vector, frequencies::Array, rng)
+    nensemble = length(frequencies)
+    ids = Array(1:1:nensemble)
+    ncopies = sum(frequencies)
+    # First make a list with id[k] repeated frequencies[k] times
+    copied_id_set = shuffle!(rng, vcat([repeat([k], frequencies[k]) for k in 1:nensemble]...))
+    if ncopies < nensemble
+        ids_chosen = vcat(copied_id_set, copied_id_set[1:nensemble-ncopies])
+    else
+        ids_chosen = copied_id_set[1:nensemble]
+    end
     
-    # We need to loop over N to reset the ensemble to the copied samples.
+    # be aware!! this is very sensitive. 
+    # For example, this does not return the same distribution
+    #if sum(frequencies) < nensemble
+    #    ids_chosen = sample(copied_id_set, nensemble)
+    #else
+    #    ids_chosen = sample(copied_id_set, nensemble, replace = false)
+    #end
+
+    
+    # Now we have the set of ids we want to carry on with. Within this set,
+    # we may not have nsenemble unique members; some ids appear more than once.
+
+    # Determine which ids of the original set are cut, and which require ADDITIONAL copies (which must be cloned)
+    chosen_ncopies = counts(ids_chosen, nensemble)
+    ids_to_be_cut =  ids[chosen_ncopies .== 0]
+    ids_to_be_cloned =  ids[chosen_ncopies .> 1]
+
+    # Determine how many clones to make of those that need them
+    nclones = chosen_ncopies[ids_to_be_cloned] .- 1
+    
+    # Create a list where the cloned ids appear as many times as they are cloned.
+    # By construction, this has the same length as ids_to_be_cut.
+    cloned_id_set = vcat([repeat([ids_to_be_cloned[k]], nclones[k]) for k in 1:length(ids_to_be_cloned)]...)
+    return ids_to_be_cut, cloned_id_set
+end
+
+
+function rewrite_history!(ensemble::Vector, ids_to_be_cut::Array, cloned_id_set::Array, idx_current::Int)
+    for j in 1:length(ids_to_be_cut)
+        idx_cut = ids_to_be_cut[j]
+        idx_clone = cloned_id_set[j]
+        ensemble[idx_cut][1:idx_current] .= ensemble[idx_clone][1:idx_current]
+    end
+    nothing
+end
+
+
+function sample_and_rewrite_history!(ensemble::Vector, frequencies::Array, idx_current::Int, rng)
+    ids_to_be_cut, cloned_id_set = sample_ids(ensemble, frequencies, rng)
+    rewrite_history!(ensemble, ids_to_be_cut, cloned_id_set, idx_current)
+    nothing
+end
+
+
+function perturb_trajectories!(u_current::Array, ensemble::Vector, nensemble::Int, idx_current::Int, ϵ::Real)
+    d = length(u_current[1])
+    for j in 1:nensemble
+        u_current[j] = ensemble[j][idx_current] + randn(d)*ϵ
+    end
+    nothing
+end
+
+include("utils.jl")
+
+# I'm keeping this around for now; we use it in tests.
+function orig_sample_and_rewrite_history!(ensemble::Vector, frequencies::Array, idx_current::Int,rng)
+    N = length(frequencies)
+    N_c = sum(frequencies)
+
+    historical_trajectories = [[ensemble[k][1:idx_current],] for k in 1:N]
+
+    copies = shuffle!(rng, vcat(repeat.(historical_trajectories, frequencies)...))
+    
     if N_c > N
         for k in 1:N
-            sim.ensemble[k][1:i2] .= copies[k]
-            u2[k] = sim.ensemble[k][i2] + randn(d)*sim.ϵ
+            ensemble[k][1:idx_current] .= copies[k]
         end
     else
         for k in 1:N_c
-            sim.ensemble[k][1:i2] .= copies[k]
-            u2[k] = sim.ensemble[k][i2] + randn(d)*sim.ϵ
+            ensemble[k][1:idx_current] .= copies[k]
             if k+N_c <= N # start over at the beginning if sum(copies) <N
-                sim.ensemble[k+N_c][1:i2] .= copies[k]
-                u2[k+N_c] = sim.ensemble[k+N_c][i2] + randn(d)*sim.ϵ
+                ensemble[k+N_c][1:idx_current] .= copies[k]
             end
         end
     end
 end
-
-include("utils.jl")
 end
