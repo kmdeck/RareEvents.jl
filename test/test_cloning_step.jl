@@ -1,7 +1,8 @@
 using Test
 using StatsBase
 using Random
-import RareEvents: sample_and_rewrite_history!, orig_sample_and_rewrite_history!
+import RareEvents: sample_and_rewrite_history!, orig_sample_and_rewrite_history!, compute_ncopies!
+
 nensemble = 500
 nsteps = 1
 idx_current = nsteps
@@ -44,4 +45,18 @@ end
     sample_and_rewrite_history!(ensemble, ncopies, idx_current, rng)
     diff = sort(vcat(ensemble...)) .== sort(vcat(orig_ensemble...))
     @test sum(diff) .== nensemble
+end
+
+
+@testset "ncopies" begin
+    rng= MersenneTwister(1);
+    nensemble = 10
+    draw = rand(rng, nensemble)
+    ncopies = ones(nensemble)
+    scores = Array(1:1:nensemble)
+    expected_ncopies = Int.(floor.(scores ./mean(scores) .+ draw))
+    rng= MersenneTwister(1);
+    compute_ncopies!(ncopies, scores, nensemble, rng)
+    similar = ncopies .== expected_ncopies
+    @test sum(similar) == nensemble
 end

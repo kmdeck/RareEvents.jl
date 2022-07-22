@@ -125,34 +125,32 @@ Runs the rare event algorithm according to the properties of `sim`.
 function run!(sim::RareEventSampler)
     # Preallocation
     u1 = deepcopy([sim.ensemble[k][1] for k in 1:sim.nensemble])
-    u2 = deepcopy([sim.ensemble[k][1] for k in 1:sim.nensemble])
     scores = zeros(sim.nensemble)
     ncopies = ones(Int, sim.nensemble)
     
-    t0 = sim.tspan[1]
-    t_integration = sim.tspan[2] - t0
+    t_start = sim.tspan[1]
+    t_integration = sim.tspan[2] - t_start
     nresample = Int(div(t_integration, sim.τ, RoundUp))
     nsteps_per_resample = Int(div(sim.τ, sim.dt, RoundUp))
     
     map(0:(nresample-1)) do i
         
-        t2 = t0+(i+1)*sim.τ
-        t1 =  t0+ i*sim.τ
+        t2 = t_start+(i+1)*sim.τ
+        t1 = t_start+ i*sim.τ
         i1 = 1+(i)*nsteps_per_resample 
         i2 = 1+(i+1)*nsteps_per_resample
 
         trajectories = integrate(sim, u1,t1,t2)
         
         score_trajectories!(sim, scores, trajectories, i1, i2, i)
+        rng = MersenneTwister(i)
         
-        compute_ncopies!(ncopies, scores, sim.nensemble)
+        compute_ncopies!(ncopies, scores, sim.nensemble, rng)
 
         # The goal is to move this to the start of the loop somehow
         # because then all worker stuff would be in a single part.
-        rng = MersenneTwister(i2)
         sample_and_rewrite_history!(sim.ensemble, ncopies, i2, rng)
-        perturb_trajectories!(u2, sim.ensemble, sim.nensemble, i2, sim.ϵ)# may want rng here?
-        u1 = copy(u2)
+        perturb_trajectories!(u1, sim.ensemble, sim.nensemble, i2, sim.ϵ)# may want rng here?
         i = i+1
     end
 end
@@ -171,9 +169,9 @@ function score_trajectories!(sim::RareEventSampler, scores, trajectories, idx_pr
     nothing
 end
 
-function compute_ncopies!(ncopies::Array,scores::Array, nensemble::Int)
+function compute_ncopies!(ncopies::Array,scores::Array, nensemble::Int, rng)
     weights = scores ./ mean(scores)
-    ncopies .= Int.(floor.(weights .+ rand(nensemble)))
+    ncopies .= Int.(floor.(weights .+ rand(rng, nensemble)))
     nothing
 end
 
