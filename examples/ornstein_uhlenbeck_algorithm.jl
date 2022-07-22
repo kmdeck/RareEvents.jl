@@ -2,20 +2,24 @@ using Revise
 using RareEvents
 using Statistics
 using DelimitedFiles
+using LinearAlgebra
 
 
-include("ornstein_uhlenbeck.jl")
+examples_dir = joinpath(pkgdir(RareEvents), "examples")
+include(joinpath(examples_dir, "ornstein_uhlenbeck.jl"))
 n_processes = Sys.CPU_THREADS
 addprocs(n_processes)
+
 
 
 dt = 0.1
 
 alg_kwargs = ();
 FT = Float64
-θ = [1.0 0.0; 0.0 1.0]
-σ = [1.0 0.0; 0.0 1.0]
-d = 2
+d=1
+θ = Diagonal(ones(d)) .+ zeros(Float64,d,d)
+σ = Diagonal(ones(d)) .+ zeros(Float64,d,d)
+
 model = OrnsteinUhlenbeck{FT}(θ, σ, d)
 @everywhere evolve_wrapper(tspan) = (u0) -> evolve_stochastic_system(model, u0, tspan, dt, alg_kwargs)
 
@@ -63,3 +67,4 @@ end
 writedlm("k_03_bootstrap_Na_refactored.csv", Na)
 writedlm("k_03_bootstrap_lr_refactored.csv", lr_matrix)
 writedlm("k_03_bootstrap_refactored.csv", a_m)
+rmprocs([p for p in procs() if p != myid()])

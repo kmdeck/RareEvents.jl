@@ -1,5 +1,1 @@
-using Test
-
-@testset "Stand-in test" begin
-    @test 1 == 1
-end
+include("test_cloning_step.jl")
