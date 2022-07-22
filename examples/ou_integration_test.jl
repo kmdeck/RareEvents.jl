@@ -78,6 +78,8 @@ moving_average!(A,u,NT)
 M = Int(length(A)/NT)
 segment_matrix  = reshape(A, (NT,M))
 event_magnitude, rtn, _ = return_curve(maximum(segment_matrix, dims = 1)[:], FT(T_a-T),  FT.(ones(M)))
+Na_direct = N_event(segment_matrix, ones(NT), a_range)
+p_direct = Na_direct[:]./sum(Na_direct)
 
 
 
@@ -110,5 +112,6 @@ plot(a_range[:], log10.(p03), ribbon = σp03[:] ./ p03[:] ./log(10.0), label = "
 # Put direct curve on here too
 σ = 0.139
 plot!(a_range[:], log10.(0.03/sqrt(2.0*π*σ^2.0) .* exp.(-1.0 .*(a_range[:] .^2.0 ./(2.0*σ^2.0)))), label= "Gaussian")
+plot!(a_range[:], log10.(p_direct), label = "Direct")
 plot!(ylabel = "P(a)Δa", xlabel = "a")
 savefig("probabilities.png")

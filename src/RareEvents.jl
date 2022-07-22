@@ -3,7 +3,6 @@ using Statistics
 using StatsBase
 using Distributed
 using Random
-
 export RareEventSampler, run!
 
     
@@ -132,26 +131,33 @@ function run!(sim::RareEventSampler)
     t_integration = sim.tspan[2] - t_start
     nresample = Int(div(t_integration, sim.τ, RoundUp))
     nsteps_per_resample = Int(div(sim.τ, sim.dt, RoundUp))
-    
-    map(0:(nresample-1)) do i
-        
-        t2 = t_start+(i+1)*sim.τ
-        t1 = t_start+ i*sim.τ
-        i1 = 1+(i)*nsteps_per_resample 
-        i2 = 1+(i+1)*nsteps_per_resample
 
-        trajectories = integrate(sim, u1,t1,t2)
-        
-        score_trajectories!(sim, scores, trajectories, i1, i2, i)
+    # Initialize
+    t1 = t_start
+    t2 = t_start+sim.τ
+    i1 = 1
+    i2 = 1+1*nsteps_per_resample
+    map(0:(nresample-1)) do i
         rng = MersenneTwister(i)
-        
+
+        # can be done per worker
+        if i > 0
+            sample_and_rewrite_history!(sim.ensemble, ncopies, i1, rng)
+            perturb_trajectories!(u1, sim.ensemble, sim.nensemble, i1, sim.ϵ)
+        end
+        trajectories = integrate(sim, u1,t1,t2)
+
+        # Central
+        score_trajectories!(sim, scores, trajectories, i1, i2, i)
         compute_ncopies!(ncopies, scores, sim.nensemble, rng)
 
-        # The goal is to move this to the start of the loop somehow
-        # because then all worker stuff would be in a single part.
-        sample_and_rewrite_history!(sim.ensemble, ncopies, i2, rng)
-        perturb_trajectories!(u1, sim.ensemble, sim.nensemble, i2, sim.ϵ)# may want rng here?
+        # Increment resample index
         i = i+1
+        # Update start and end points of integrations
+        t1 = t2
+        t2 = t_start+(i+1)*sim.τ
+        i1 = i2
+        i2 = 1+(i+1)*nsteps_per_resample
     end
 end
 
