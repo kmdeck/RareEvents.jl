@@ -49,7 +49,7 @@ Na = reshape(Na, (length(a_range), iters))
 algorithm_cost = nensemble*(tspan[2]-tspan[1])*iters*dt
 for iter in 1:iters
     println(iter)
-    sim = RareEventSampler{Float64}(dt, τ, tspan,u0, evolve_wrapper, nensemble, metric, k, ϵ)
+    sim = RareEventSampler{Float64}(dt, τ, tspan,u0, evolve_wrapper, nensemble, metric, k, ϵ, iter)
     
     run!(sim);
     moving_average_matrix = zeros((nensemble, length(sim.ensemble[1])-NT))
@@ -82,7 +82,7 @@ A = zeros(length(u)-NT-1)
 moving_average!(A,u,NT)
 M = Int(length(A)/NT)
 segment_matrix  = reshape(A, (NT,M))
-em_direct, r_direct, r_paper_direct, σr_direct = return_curve(maximum(segment_matrix, dims = 1)[:], FT(T_a-T),  FT.(ones(M)))
+em_direct, r_direct, r_paper_direct, σr_direct = return_curve(maximum(segment_matrix, dims = 1)[:], FT(T),  FT.(ones(M)))
 
 
 
@@ -98,7 +98,6 @@ for i in 1:(length(a_range)-1)
         mean_rtn[i] = log10.(mean(r_paper[:][mask]))
         std_rtn[i] = std(r_paper[:][mask])/mean(r_paper[:][mask])./log(10.0)
     end
-    
 end
 nonzero = (mean_a .!= 0.0) .& (isnan.(std_rtn) .== 0)
 final_a = mean_a[nonzero]
