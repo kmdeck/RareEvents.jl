@@ -1,19 +1,5 @@
-export moving_average!, return_curve, ensemble_statistics, N_event, likelihood_ratio
+export return_curve, ensemble_statistics, count_events_per_bin, likelihood_ratio, block_mean, block_maxima
 
-"""
-    moving_average!(A::Vector{FT},timeseries::Vector{FT}, window::Int)
-                   where {FT<:AbstractFloat}
-
-Computes the moving average 1/T ∫_t^(t+T) timeseries(t') dt',
-which is equal to the mean of timeseries[i:i+window],
-where window = T/dt, and A is the array where the resulting
-timeseries of moving averages is stored.
-"""
-function moving_average!(A::Vector{FT},timeseries::Vector{FT}, window::Int) where {FT<:AbstractFloat}
-    for i in 1:length(A)
-        A[i] = mean(timeseries[i:i+window])
-    end
-end
 """
      return_curve(a_m::Vector{FT},
                   ΔT::FT,
@@ -74,13 +60,13 @@ function return_curve(a_m::Vector{FT},
     return sorted,  return_time_naive, return_time_paper, σ_rtn
 end
 
-function N_event(a_mn::Matrix{FT},
-                 likelihood_ratio::Vector{FT},
+function count_events_per_bin(samples::Vector{FT},
+                 likelihood_ratio::FT,
                  magnitude::Vector{FT}
                  ) where {FT <: AbstractFloat}
     Na = zeros(length(magnitude))
     for i in 1:length(magnitude)-1
-        mask = (a_mn .< magnitude[i+1]) .& ( a_mn .>= magnitude[i])
+        mask = (samples .< magnitude[i+1]) .& ( samples .>= magnitude[i])
         Na[i] = sum(sum(mask, dims = 2) .* likelihood_ratio)
     end
     return Na
@@ -97,4 +83,31 @@ end
 
 function likelihood_ratio(sim, trajectory, λ, T_a)
     return exp(T_a*λ)/score(sim,trajectory)
+end
+
+
+"""
+    block_maxima(x::Vector, m::Int)
+
+Computes the non-overlapping moving maximum of a vector 
+x, using a window of length m (in indices).
+"""
+function block_maxima(x::Vector, m::Int)
+    blocks = collect(Base.Iterators.partition(x, m))
+    maxima = map(y-> maximum(y), blocks)
+    output_length = Int(floor(length(x)/m))
+    return maxima[1:output_length]
+end
+
+"""
+    block_mean(x::Vector, m::Int)
+
+Computes the non-overlapping moving average of a vector 
+x, using a window of length m (in indices).
+"""
+function block_mean(x::Vector, m::Int)
+    blocks = collect(Base.Iterators.partition(x, m))
+    maxima = map(y-> mean(y), blocks)
+    output_length = Int(floor(length(x)/m))
+    return maxima[1:output_length]
 end

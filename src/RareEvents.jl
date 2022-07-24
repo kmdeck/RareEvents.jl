@@ -4,6 +4,7 @@ using StatsBase
 using Distributed
 using Random
 
+
 export RareEventSampler, run!
 
     
@@ -36,6 +37,8 @@ struct RareEventSampler{FT<:AbstractFloat, ST,P}
     ϵ::FT
     "Flag indicating if the user wishes to run in a distributed fashion"
     distributed::Bool
+    "Random seed"
+    seed::Int64
 end
 
 """
@@ -83,7 +86,8 @@ function RareEventSampler{FT}(
     nensemble::Int,
     metric::Function,
     k::FT,
-    ϵ::FT;
+    ϵ::FT,
+    seed::Int64;
     distributed = false
 ) where {FT,U,P}
     t_integration = tspan[2] - tspan[1] # total runtime for algorithm
@@ -99,7 +103,7 @@ function RareEventSampler{FT}(
     # Preallocation for weight normalization at each resample time
     weight_norm = zeros(Int(div(t_integration, τ, RoundUp)))
 
-    args = (dt, τ, tspan, evolve_single_trajectory, nensemble, ensemble, metric,k, weight_norm, ϵ, distributed)
+    args = (dt, τ, tspan, evolve_single_trajectory, nensemble, ensemble, metric,k, weight_norm, ϵ, distributed, seed)
     return RareEventSampler{FT,typeof(ensemble),typeof(evolve_single_trajectory)}(args...)
 end
 
@@ -132,10 +136,9 @@ function run!(sim::RareEventSampler)
     t_integration = sim.tspan[2] - t_start
     nresample = Int(div(t_integration, sim.τ, RoundUp))
     nsteps_per_resample = Int(div(sim.τ, sim.dt, RoundUp))
+    rng = MersenneTwister(sim.seed)
     
     map(0:(nresample-1)) do i
-        rng = MersenneTwister(i)
-        
         t2 = t_start+(i+1)*sim.τ
         t1 = t_start+ i*sim.τ
         i1 = 1+(i)*nsteps_per_resample 
@@ -178,18 +181,18 @@ function sample_ids(ensemble::Vector, frequencies::Array, rng)
     # First make a list with id[k] repeated frequencies[k] times
     copied_id_set = shuffle!(rng, vcat([repeat([k], frequencies[k]) for k in 1:nensemble]...))
     if ncopies < nensemble
-        ids_chosen = vcat(copied_id_set, copied_id_set[1:nensemble-ncopies])
+        ids_chosen = vcat(copied_id_set, copied_id_set[1:nensemble-ncopies]) # Not quite the same as sampling with replacement
     else
-        ids_chosen = copied_id_set[1:nensemble]
+        ids_chosen = copied_id_set[1:nensemble] # should be the same as sampling w/o replacement
     end
     
     # be aware!! this is very sensitive. 
     # For example, this does not return the same distribution
-    #if sum(frequencies) < nensemble
-    #    ids_chosen = sample(copied_id_set, nensemble)
-    #else
-    #    ids_chosen = sample(copied_id_set, nensemble, replace = false)
-    #end
+#    if sum(frequencies) < nensemble
+#        ids_chosen = sample(copied_id_set, nensemble)
+#    else
+#        ids_chosen = sample(copied_id_set, nensemble, replace = false)
+#    end
 
     
     # Now we have the set of ids we want to carry on with. Within this set,
@@ -236,6 +239,7 @@ function perturb_trajectories!(u_current::Array, ensemble::Vector, nensemble::In
 end
 
 include("utils.jl")
+include("gev_utils.jl")
 
 # I'm keeping this around for now; we use it in tests.
 function orig_sample_and_rewrite_history!(ensemble::Vector, frequencies::Array, idx_current::Int,rng)
@@ -259,4 +263,5 @@ function orig_sample_and_rewrite_history!(ensemble::Vector, frequencies::Array, 
         end
     end
 end
+
 end
