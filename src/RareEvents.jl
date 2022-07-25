@@ -180,9 +180,9 @@ function sample_ids(ensemble::Vector, frequencies::Array, rng)
     # First make a list with id[k] repeated frequencies[k] times
     copied_id_set = shuffle!(rng, vcat([repeat([k], frequencies[k]) for k in 1:nensemble]...))
     if ncopies < nensemble
-        ids_chosen = vcat(copied_id_set, copied_id_set[1:nensemble-ncopies])
+        ids_chosen = vcat(copied_id_set, copied_id_set[1:nensemble-ncopies]) # Not quite the same as sampling with replacement
     else
-        ids_chosen = copied_id_set[1:nensemble]
+        ids_chosen = copied_id_set[1:nensemble] # should be the same as sampling w/o replacement
     end
     
     # be aware!! this is very sensitive. 

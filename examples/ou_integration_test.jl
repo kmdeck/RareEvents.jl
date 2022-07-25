@@ -23,9 +23,9 @@ model = OrnsteinUhlenbeck{FT}(θ, σ, d)
 
 # Set up rare event algorithm
 τ = 0.5
-nensemble = 500
-u0 = [copy(zeros(d)) for i in 1:nensemble]
-k = 0.4
+nensemble = 600
+u0 = [copy(zeros(d)) .+ randn(d)*0.71 for i in 1:nensemble]
+k = 0.3
 ϵ = 0.002
 metric(y) = y[1]
 T_a = 100.0
@@ -88,6 +88,7 @@ em_direct, r_direct, r_paper_direct, σr_direct = return_curve(maximum(segment_m
 
 
 # Make plots
+plot1 = plot()
 mean_a = zeros(length(a_range)-1)
 mean_rtn = zeros(length(a_range)-1)
 std_rtn = zeros(length(a_range)-1)
@@ -103,17 +104,24 @@ nonzero = (mean_a .!= 0.0) .& (isnan.(std_rtn) .== 0)
 final_a = mean_a[nonzero]
 final_r = mean_rtn[nonzero]
 final_σr = std_rtn[nonzero]
-plot(final_a, final_r, ribbon = final_σr, label = "GKLT Algorithm")
-plot!(em_direct, log10.(r_paper_direct), ribbon = σr_direct ./ r_paper_direct ./ log(10.0), label = "Direct Integration")
-plot!(xlabel = "Event magnitude")
-plot!(ylabel = "Log10(Return Time)")
-plot!(legend = :topleft)
-plot!(xrange = [0.2,0.75])
-savefig("return_curve_ou.png")
+plot!(plot1,final_a, final_r, ribbon = final_σr, label = "GKLT Algorithm")
+plot!(plot1,em_direct, log10.(r_paper_direct), ribbon = σr_direct ./ r_paper_direct ./ log(10.0), label = "Direct Integration")
+plot!(plot1,xlabel = "Event magnitude")
+plot!(plot1,ylabel = "Log10(Return Time)")
+plot!(plot1, legend = :topleft)
+plot!(plot1, xrange = [0.0,0.75])
+savefig(plot1, "return_curve_ou.png")
 
 
 
-# We can also count the number of events seen directly.
+# We can also count the number of events seen directly. Note that these are not independent
+# draws. If we see two extreme events that are correlated in time (e.g. two days in a single heat wave),
+# it should count as a single "event", but this would count it multiple times,
+# leading to lower return periods. But we see the opposite! why! This says an event
+# is slightly more rare compared with what the max method says. Needs more digging into!
+
+
+plot2 = plot()
 Na_direct = N_event(segment_matrix, ones(NT), a_range)
 p_direct = Na_direct[:]./sum(Na_direct)
 
@@ -121,7 +129,7 @@ N03 = mean(Na, dims =2 )
 σN03 = std(Na, dims =2 )
 p03 = N03[:]./sum(N03)
 σp03 = σN03[:] / sum(N03)
-plot(a_range[:], log10.(p03), ribbon = σp03[:] ./ p03[:] ./log(10.0), label = "GKLT Algorithm")
-plot!(a_range[:], log10.(p_direct), label = "Direct Integration")
-plot!(ylabel = "Log10(Probability of Event)", xlabel = "Event magnitude")
-savefig("probabilities_ou.png")
+plot!(plot2,a_range[:], log10.(p03), ribbon = σp03[:] ./ p03[:] ./log(10.0), label = "GKLT Algorithm")
+plot!(plot2,a_range[:], log10.(p_direct), label = "Direct Integration")
+plot!(plot2,ylabel = "Log10(Probability of Event)", xlabel = "Event magnitude")
+savefig(plot2, "probabilities_ou.png")
