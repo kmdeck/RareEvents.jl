@@ -83,8 +83,8 @@ moving_average!(A,u,NT)
 M = Int(length(A)/NT)
 segment_matrix  = reshape(A, (NT,M))
 em_direct, r_direct, r_paper_direct, σr_direct = return_curve(maximum(segment_matrix, dims = 1)[:], FT(T),  FT.(ones(M)))
-
-
+blocks = block_maxima(A, NT)
+params, nll = fit_gev(blocks, [std(blocks), mean(blocks), 0.0])
 
 
 # Make plots

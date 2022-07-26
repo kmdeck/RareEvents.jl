@@ -3,8 +3,10 @@ using Statistics
 using StatsBase
 using Distributed
 using Random
+using Optim
 
-export RareEventSampler, run!
+
+export RareEventSampler, run!, block_maxima, log_likelihood_gev, fit_gev, gev_pdf, gev_cdf
 
     
 """
@@ -261,4 +263,63 @@ function orig_sample_and_rewrite_history!(ensemble::Vector, frequencies::Array, 
         end
     end
 end
+
+
+
+function log_likelihood_gev(data::Vector, σ::FT, μ::FT, ξ::FT)::FT where {FT}
+    Y = (data .-μ)./σ 
+    X = FT(1.0) .+ ξ .* Y
+    constraint = X .> 0
+    m = length(data)
+    if sum(constraint) < m
+        return -FT(1.0)/eps(FT)
+    else
+        if abs(ξ) > FT(1e-2)
+            return -m*log(σ) - (FT(1) + FT(1)/ξ)*sum(log.(X)) - sum(X.^(-FT(1)/ξ))
+        else
+            return -m*log(σ) - sum(Y) - sum(exp.(-FT(1) .*Y))
+        end
+    end
+    nothing
+end
+
+
+function block_maxima(x::Vector, m::Int)
+    blocks = collect(Base.Iterators.partition(x, m))
+    maxima = map(y-> maximum(y), blocks)
+    output_length = Int(floor(length(x)/m))
+    return maxima[1:output_length]
+end
+
+
+function fit_gev(blocks::Vector, initial_guess::Vector{FT}) where{FT}
+    function wrapper(guess::Vector{FT}) where{FT}
+        σ, μ,ξ = guess
+        return -(log_likelihood_gev(blocks, σ, μ, ξ))
+    end
+    results = optimize(wrapper, initial_guess, NelderMead())
+    return Optim.minimizer(results), Optim.minimum(results)
+end
+
+function gev_cdf(x::FT, σ::FT, μ::FT, ξ::FT) where {FT}
+    y = (x-μ)/σ
+    z = FT(1.0)+ξ*y
+    if abs(ξ) > FT(5e-2)
+        return exp(-z^(-FT(1)/ξ))
+    else
+        return exp(-exp(-y))
+    end
+    
+end
+
+function gev_pdf(x::FT, σ::FT, μ::FT, ξ::FT) where {FT}
+    y = (x-μ)/σ
+    z = FT(1.0)+ξ*y
+    if abs(ξ) > FT(1e-2)
+        return exp(-z^(-FT(1)/ξ))*z^(-(FT(1)+FT(1)/ξ))./σ
+    else
+        return exp(-y)*exp(-exp(-y))./σ
+    end
+    
+end 
 end
