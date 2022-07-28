@@ -43,30 +43,22 @@ r_paper = similar(em)
 σr = similar(em)
 
 a_range = Array(0.0:0.03:1.0)
-Na = zeros(length(a_range)*iters)
-Na = reshape(Na, (length(a_range), iters))
-
 algorithm_cost = nensemble*(tspan[2]-tspan[1])*iters*dt
 for iter in 1:iters
     println(iter)
     sim = RareEventSampler{Float64}(dt, τ, tspan,u0, evolve_wrapper, nensemble, metric, k, ϵ, iter)
     
     run!(sim);
-    moving_average_matrix = zeros((nensemble, length(sim.ensemble[1])-NT))
-    moving_average_row = zeros(length(sim.ensemble[1])-NT)
+    a_m = zeros(nensemble)
     lr_vector = zeros(nensemble)
     λ = sum(log.(sim.weight_norm))/T_a    
     
     for i in 1:nensemble
         trajectory = [metric(sim.ensemble[i][j]) for j in 1:length(sim.ensemble[i])]
-        moving_average_row .= moving_average_matrix[i,:]
-        moving_average!(moving_average_row, trajectory, NT)
-        moving_average_matrix[i,:] .= moving_average_row
         lr_vector[i] = likelihood_ratio(sim, trajectory, λ, T_a)
-    end
-    Na[:,iter] .+= N_event(moving_average_matrix, lr_vector, a_range)
+        a_m[i] =  maximum(block_mean(trajectory, NT))
 
-    a_m = maximum(moving_average_matrix, dims = 2)[:]
+    end
     em[:,iter], r[:,iter], r_paper[:,iter], σr[:, iter]= return_curve(a_m, T_a-T, lr_vector);
 
 end
@@ -78,13 +70,43 @@ tspan_direct = (0.0, 5e5)
 direct_solution = evolve_stochastic_system(model, zeros(d), tspan_direct, dt, (maxiters = 1e8,));
 direct_cost = (tspan_direct[2]-tspan_direct[1])*dt
 u = [metric(direct_solution[k]) for k in 1:length(direct_solution)]
-A = zeros(length(u)-NT-1)
-moving_average!(A,u,NT)
-M = Int(length(A)/NT)
-segment_matrix  = reshape(A, (NT,M))
-em_direct, r_direct, r_paper_direct, σr_direct = return_curve(maximum(segment_matrix, dims = 1)[:], FT(T),  FT.(ones(M)))
-blocks = block_maxima(A, NT)
-params, nll = fit_gev(blocks, [std(blocks), mean(blocks), 0.0])
+A = block_mean(u, NT)# same stats as segment matrix
+m = 100
+em_direct, r_direct, r_paper_direct, σr_direct = return_curve(A, FT(T),  FT.(ones(length(A))))
+
+# Fit GEV
+m = 100 # I see sensitivity here!
+blocks = block_maxima(A, m)
+params, nll = fit_gev(blocks, [std(blocks), mean(blocks), 0.1])
+
+histogram(blocks, norm = true, label = "Data")
+bin = 0.01
+magnitude = Array(-0.06:bin:1.0)
+cdf_A= (gev_cdf.(magnitude, params[1], params[2], params[3])).^(1.0/m)
+pdf_A= (cdf_A[2:end] .- cdf_A[1:end-1])/bin
+
+# Lots of plots
+#=
+plot!(magnitude, gev_pdf.(magnitude, params[1], params[2], params[3]), label = "Fit")
+# looks reasonable. Now to look at CDF.
+plot(sort(blocks), Array(1:1:length(blocks))./length(blocks), label  ="Data")
+plot!(magnitude, gev_cdf.(magnitude, params[1], params[2], params[3]), label = "Fit")
+
+
+# Yes, the CDF of A ^m looks like CDF of maxima over m
+plot(sort(blocks), Array(1:1:length(blocks))./length(blocks))
+plot!(sort(A), (Array(1:1:length(A))./length(A)).^m)
+plot!(magnitude, gev_cdf.(magnitude, params[1], params[2], params[3]), label = "Fit")
+
+# What about the CDF of A
+plot(sort(blocks), (Array(1:1:length(blocks))./length(blocks)).^(1/m))
+plot!(sort(A), Array(1:1:length(A))./length(A))
+
+# Maybe this is only good in the tail? I think so?
+plot(magnitude, cdf_A)
+plot!(sort(A), Array(1:1:length(A))./length(A))
+=#
+
 
 
 # Make plots
@@ -106,30 +128,10 @@ final_r = mean_rtn[nonzero]
 final_σr = std_rtn[nonzero]
 plot!(plot1,final_a, final_r, ribbon = final_σr, label = "GKLT Algorithm")
 plot!(plot1,em_direct, log10.(r_paper_direct), ribbon = σr_direct ./ r_paper_direct ./ log(10.0), label = "Direct Integration")
+plot!(plot1, magnitude, log10.(50.0 ./ (1.0 .- cdf_A)), label = "GEV")
+plot!(plot1, magnitude, log10.(50.0 ./ (1.0 .- 0.5 .*(1 .+erf.(magnitude ./2 .^0.5 ./std(A))))), label = "Gaussian")
 plot!(plot1,xlabel = "Event magnitude")
 plot!(plot1,ylabel = "Log10(Return Time)")
 plot!(plot1, legend = :topleft)
-plot!(plot1, xrange = [0.0,0.75])
+plot!(plot1, xrange = [0.0,0.1.0])
 savefig(plot1, "return_curve_ou.png")
-
-
-
-# We can also count the number of events seen directly. Note that these are not independent
-# draws. If we see two extreme events that are correlated in time (e.g. two days in a single heat wave),
-# it should count as a single "event", but this would count it multiple times,
-# leading to lower return periods. But we see the opposite! why! This says an event
-# is slightly more rare compared with what the max method says. Needs more digging into!
-
-
-plot2 = plot()
-Na_direct = N_event(segment_matrix, ones(NT), a_range)
-p_direct = Na_direct[:]./sum(Na_direct)
-
-N03 = mean(Na, dims =2 )
-σN03 = std(Na, dims =2 )
-p03 = N03[:]./sum(N03)
-σp03 = σN03[:] / sum(N03)
-plot!(plot2,a_range[:], log10.(p03), ribbon = σp03[:] ./ p03[:] ./log(10.0), label = "GKLT Algorithm")
-plot!(plot2,a_range[:], log10.(p_direct), label = "Direct Integration")
-plot!(plot2,ylabel = "Log10(Probability of Event)", xlabel = "Event magnitude")
-savefig(plot2, "probabilities_ou.png")
