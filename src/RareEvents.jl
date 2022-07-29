@@ -266,18 +266,19 @@ end
 
 
 
-function log_likelihood_gev(data::Vector, σ::FT, μ::FT, ξ::FT)::FT where {FT}
+function log_likelihood_gev(data::Vector, parameters::Vector{FT}) where {FT}
+    σ, μ,ξ = parameters
     y = (data .-μ)./σ 
     z = FT(1.0) .+ ξ .* y
 
     m = length(data)
     first_constraint = sum(z .> 0) == m
     second_constraint = σ > 0
-#    third_constraint = ξ > 0
-    if !first_constraint || !second_constraint# || !third_constraint
+    if !first_constraint || !second_constraint
         return -FT(1.0)/eps(FT)
     else
-        if abs(ξ) > FT(1e-2)
+        # Per Cole's textbook
+        if abs(ξ) > FT(1e-6)
             return -m*log(σ) - (FT(1) + FT(1)/ξ)*sum(log.(z)) - sum(z.^(-FT(1)/ξ))
         else
             return -m*log(σ) - sum(y) - sum(exp.(-FT(1) .*y))
@@ -305,8 +306,7 @@ end
 
 function fit_gev(blocks::Vector, initial_guess::Vector{FT}) where{FT}
     function wrapper(guess::Vector{FT}) where{FT}
-        σ, μ,ξ = guess
-        return -(log_likelihood_gev(blocks, σ, μ, ξ))
+        return -(log_likelihood_gev(blocks,guess))
     end
     results = optimize(wrapper, initial_guess, NelderMead())
     return Optim.minimizer(results), Optim.minimum(results)
@@ -320,7 +320,6 @@ function gev_cdf(x::FT, σ::FT, μ::FT, ξ::FT) where {FT}
     elseif ξ > 0.0 && z <= 0
         return FT(0)
     elseif abs(ξ) > FT(1e-6)
-        # G(x) = exp( -[1+ξ(x-μ)/σ] ^(-1/ξ) )
         return exp(-z^(-FT(1)/ξ))
     else
         return exp(-exp(-y))
@@ -331,11 +330,11 @@ end
 function gev_pdf(x::FT, σ::FT, μ::FT, ξ::FT) where {FT}
     y = (x-μ)/σ
     z = FT(1.0)+ξ*y
-    #if abs(ξ) > FT(1e-6)
-    return exp(-z^(-FT(1)/ξ))*z^(-(FT(1)+FT(1)/ξ))./σ
-    #else
-    #    return exp(-y)*exp(-exp(-y))./σ
-    #end
+    if abs(ξ) > FT(1e-6)
+        return exp(-z^(-FT(1)/ξ))*z^(-(FT(1)+FT(1)/ξ))./σ
+    else
+        return exp(-y)*exp(-exp(-y))./σ
+    end
     
 end 
 end

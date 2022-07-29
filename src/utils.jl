@@ -1,4 +1,4 @@
-export moving_average!, return_curve, ensemble_statistics, N_event, likelihood_ratio
+export moving_average!, return_curve, ensemble_statistics, N_event, likelihood_ratio, evolve_mcmc, accept_or_reject
 
 """
     moving_average!(A::Vector{FT},timeseries::Vector{FT}, window::Int)
@@ -97,4 +97,32 @@ end
 
 function likelihood_ratio(sim, trajectory, λ, T_a)
     return exp(T_a*λ)/score(sim,trajectory)
+end
+
+
+function accept_or_reject(x::Vector, x_proposed::Vector, data::Vector, log_likelihood::Function)
+    u = rand()
+    if log(u) <= log_likelihood(data, x_proposed) - log_likelihood(data, x)
+        return x_proposed
+    else
+        return x
+    end
+end
+
+function mcmc_sample(data, x::Vector, k::Int, σ_k::Float64, log_likelihood::Function)
+    x_proposed = copy(x)
+    x_proposed[k] += randn()*σ_k
+    x_next = accept_or_reject(x, x_proposed, data, log_likelihood)
+    return vcat(x_next, log_likelihood(data, x_next))
+end
+
+function evolve_mcmc(data::Vector, x0::Vector, σ::Vector, log_likelihood::Function, nsteps::Int)
+    nparams = length(x0)
+    chain = [zeros(nparams+1) for _ in 1:nsteps*nparams]
+    chain[1] .= vcat(x0, log_likelihood(data, x0))
+    for i in 2:nsteps*nparams
+        k = Int64(ceil(rand()*3))
+        chain[i] .= mcmc_sample(data, chain[i-1][1:nparams],k, σ[k], log_likelihood)
+    end
+    return chain
 end

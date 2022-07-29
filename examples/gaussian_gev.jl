@@ -30,13 +30,6 @@ for block_length in block_lengths
     params, nll = fit_gev(blocks, [std(blocks), mean(blocks), 0.05])
     plot!(plot2, sort(blocks), Array(1:1:length(blocks))./length(blocks), label = string("block length = ", string(block_length)))
     plot!(plot3, (sort(blocks)  .- params[2])./params[3], Array(1:1:length(blocks))./length(blocks), label = string("block length = ", string(block_length)))
-   # if block_length = 1000
-   # β = -1.0/(log(log(4/3))-log(log(4)))
-   # α =  log(log(2.0))/(log(log(4/3))-log(log(4)))
-   # limit = 1.0 .-gev_cdf.(magnitude,α, β, 0.0)
-   # plot!(plot3, magnitude, limit, label = "limiting distribution")
-   # end
-    
     cdf= (gev_cdf.(magnitude, params[1], params[2], params[3])).^(1.0/block_length)
     plot!(plot1, magnitude[cdf .< 1], 1.0 .- cdf[cdf .<1], label = string("GEV, block length = ", string(block_length)))
 end
@@ -44,3 +37,21 @@ end
 savefig(plot1, "gaussian_cdf.png")
 savefig(plot2, "gaussian_block_maxima_cdf.png")
 savefig(plot3, "gaussian_scaled_block_maxima_cdf.png")
+
+
+
+## MCMC
+block_length = 10
+draws = randn(1000*block_length)
+blocks = block_maxima(draws, block_length)
+params, nll = fit_gev(blocks, [std(blocks), mean(blocks), 0.05])
+chain = evolve_mcmc(blocks, params, [0.01, 0.01, 0.005], log_likelihood_gev, 5000)
+
+
+# propagate uncertainty to 
+for s in 1:100
+    index = Int64(ceil(rand()*length(chain)))
+    p = chain[index]
+    cdf= (gev_cdf.(magnitude, p[1], p[2], p[3])).^(1.0/block_length)
+    plot!(plot1, magnitude, 1.0 .- cdf .+ eps(Float64), label = "")
+end
