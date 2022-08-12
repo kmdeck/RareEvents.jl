@@ -150,10 +150,12 @@ function run!(sim::RareEventSampler)
             perturb_trajectories!(u1, sim.ensemble, sim.nensemble, i1, sim.ϵ)
         end
         trajectories = integrate(sim, u1,t1,t2)
+        score_trajectories!(sim, scores, trajectories, i1, i2)
 
+        
         # Central
-        score_trajectories!(sim, scores, trajectories, i1, i2, i)
-        compute_ncopies!(ncopies, scores, sim.nensemble, rng)
+        sim.weight_norm[i+1] = mean(scores)
+        compute_ncopies!(ncopies, scores, sim.weight_norm[i+1], sim.nensemble, rng)
 
         # Increment resample index
         i = i+1
@@ -170,17 +172,16 @@ function integrate(sim::RareEventSampler, u_prev,t_prev,t_curr)
      return pmap(sim.evolve_single_trajectory((t_prev,t_curr)),u_prev;distributed = sim.distributed)
 end
 
-function score_trajectories!(sim::RareEventSampler, scores, trajectories, idx_prev::Int,idx_current::Int, idx_resample::Int)
+function score_trajectories!(sim::RareEventSampler, scores, trajectories, idx_prev::Int,idx_current::Int)
     for k in 1:sim.nensemble
         sim.ensemble[k][idx_prev:idx_current] .= trajectories[k]
         scores[k] = score(sim,trajectories[k])
     end
-    sim.weight_norm[idx_resample+1] = mean(scores)
     nothing
 end
 
-function compute_ncopies!(ncopies::Array,scores::Array, nensemble::Int, rng)
-    weights = scores ./ mean(scores)
+function compute_ncopies!(ncopies::Array,scores::Array, norm, nensemble::Int, rng)
+    weights = scores ./ norm
     ncopies .= Int.(floor.(weights .+ rand(rng, nensemble)))
     nothing
 end
