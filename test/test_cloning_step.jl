@@ -56,7 +56,7 @@ end
     scores = Array(1:1:nensemble)
     expected_ncopies = Int.(floor.(scores ./mean(scores) .+ draw))
     rng= MersenneTwister(1);
-    compute_ncopies!(ncopies, scores, nensemble, rng)
+    compute_ncopies!(ncopies, scores,mean(scores), nensemble, rng)
     similar = ncopies .== expected_ncopies
     @test sum(similar) == nensemble
 end
