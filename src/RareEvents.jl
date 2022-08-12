@@ -3,6 +3,7 @@ using Statistics
 using StatsBase
 using Distributed
 using Random
+
 export RareEventSampler, run!
 
     
@@ -35,6 +36,8 @@ struct RareEventSampler{FT<:AbstractFloat, ST,P}
     ϵ::FT
     "Flag indicating if the user wishes to run in a distributed fashion"
     distributed::Bool
+    "Random seed"
+    seed::Int64
 end
 
 """
@@ -82,7 +85,8 @@ function RareEventSampler{FT}(
     nensemble::Int,
     metric::Function,
     k::FT,
-    ϵ::FT;
+    ϵ::FT,
+    seed::Int64;
     distributed = false
 ) where {FT,U,P}
     t_integration = tspan[2] - tspan[1] # total runtime for algorithm
@@ -98,7 +102,7 @@ function RareEventSampler{FT}(
     # Preallocation for weight normalization at each resample time
     weight_norm = zeros(Int(div(t_integration, τ, RoundUp)))
 
-    args = (dt, τ, tspan, evolve_single_trajectory, nensemble, ensemble, metric,k, weight_norm, ϵ, distributed)
+    args = (dt, τ, tspan, evolve_single_trajectory, nensemble, ensemble, metric,k, weight_norm, ϵ, distributed, seed)
     return RareEventSampler{FT,typeof(ensemble),typeof(evolve_single_trajectory)}(args...)
 end
 
@@ -133,12 +137,12 @@ function run!(sim::RareEventSampler)
     nsteps_per_resample = Int(div(sim.τ, sim.dt, RoundUp))
 
     # Initialize
+    rng = MersenneTwister(sim.seed)
     t1 = t_start
     t2 = t_start+sim.τ
     i1 = 1
     i2 = 1+1*nsteps_per_resample
     map(0:(nresample-1)) do i
-        rng = MersenneTwister(i)
 
         # can be done per worker
         if i > 0
@@ -188,18 +192,18 @@ function sample_ids(ensemble::Vector, frequencies::Array, rng)
     # First make a list with id[k] repeated frequencies[k] times
     copied_id_set = shuffle!(rng, vcat([repeat([k], frequencies[k]) for k in 1:nensemble]...))
     if ncopies < nensemble
-        ids_chosen = vcat(copied_id_set, copied_id_set[1:nensemble-ncopies])
+        ids_chosen = vcat(copied_id_set, copied_id_set[1:nensemble-ncopies]) # Not quite the same as sampling with replacement
     else
-        ids_chosen = copied_id_set[1:nensemble]
+        ids_chosen = copied_id_set[1:nensemble] # should be the same as sampling w/o replacement
     end
     
-    # Wow  - for some reason the below is different
-    # from the above.  ¯\_(ツ)_/¯
-    #if sum(frequencies) < nensemble
-    #    ids_chosen = sample(copied_id_set, nensemble)
-    #else
-    #    ids_chosen = sample(copied_id_set, nensemble, replace = false)
-    #end
+    # be aware!! this is very sensitive. 
+    # For example, this does not return the same distribution
+#    if sum(frequencies) < nensemble
+#        ids_chosen = sample(copied_id_set, nensemble)
+#    else
+#        ids_chosen = sample(copied_id_set, nensemble, replace = false)
+    #    end
 
     
     # Now we have the set of ids we want to carry on with. Within this set,
@@ -219,22 +223,6 @@ function sample_ids(ensemble::Vector, frequencies::Array, rng)
     return ids_to_be_cut, cloned_id_set
 end
 
-
-function sample_and_rewrite_history!(ensemble::Vector, frequencies::Array, idx_current::Int, rng)
-    # This has to be done centrally
-    ids_to_be_cut, cloned_id_set = sample_ids(ensemble, frequencies, rng)
-
-    # This would be done per worker.
-    # Replace cut ids with the cloned ids.
-    for j in 1:length(ids_to_be_cut)
-        idx_cut = ids_to_be_cut[j]
-        idx_clone = cloned_id_set[j]
-         ensemble[idx_cut][1:idx_current] .= ensemble[idx_clone][1:idx_current]
-    end
-    nothing
-end
-
-
 function perturb_trajectories!(u_current::Array, ensemble::Vector, nensemble::Int, idx_current::Int, ϵ::Real)
     d = length(u_current[1])
     for j in 1:nensemble
@@ -243,24 +231,30 @@ function perturb_trajectories!(u_current::Array, ensemble::Vector, nensemble::In
     nothing
 end
 
-include("utils.jl")
+function rewrite_history!(ensemble::Vector, ids_to_be_cut::Array, cloned_id_set::Array, idx_current::Int)
+    for j in 1:length(ids_to_be_cut)
+        idx_cut = ids_to_be_cut[j]
+        idx_clone = cloned_id_set[j]
+        ensemble[idx_cut][1:idx_current] .= ensemble[idx_clone][1:idx_current]
+    end
+    nothing
+end
+
+
+function sample_and_rewrite_history!(ensemble::Vector, frequencies::Array, idx_current::Int, rng)
+    ids_to_be_cut, cloned_id_set = sample_ids(ensemble, frequencies, rng)
+    rewrite_history!(ensemble, ids_to_be_cut, cloned_id_set, idx_current)
+    nothing
+end
+
 function orig_sample_and_rewrite_history!(ensemble::Vector, frequencies::Array, idx_current::Int,rng)
     N = length(frequencies)
     N_c = sum(frequencies)
-    # Dimensionality of state vector
-    #d = length(u2[1])
 
-    # We need an array of the cloned/kept trajectory histories
-    # which we can then set the ensemble array equal to.
     historical_trajectories = [[ensemble[k][1:idx_current],] for k in 1:N]
 
-    # Repeat trajectory i ncopies[i] times.
-    # Then shuffle this array of repeated trajectories, so that selecting from it in order is
-    # equivalent to a random sample.
     copies = shuffle!(rng, vcat(repeat.(historical_trajectories, frequencies)...))
     
-    # We need to loop over N to reset the ensemble to the copied samples.
-
     if N_c > N
         for k in 1:N
             ensemble[k][1:idx_current] .= copies[k]
@@ -274,4 +268,7 @@ function orig_sample_and_rewrite_history!(ensemble::Vector, frequencies::Array, 
         end
     end
 end
+
+include("utils.jl")
+include("gev_utils.jl")
 end
