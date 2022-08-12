@@ -4,6 +4,7 @@ using StatsBase
 using Distributed
 using Random
 
+
 export RareEventSampler, run!
 
     
@@ -138,6 +139,7 @@ function run!(sim::RareEventSampler)
 
     # Initialize
     rng = MersenneTwister(sim.seed)
+    
     t1 = t_start
     t2 = t_start+sim.τ
     i1 = 1
@@ -204,7 +206,7 @@ function sample_ids(ensemble::Vector, frequencies::Array, rng)
 #        ids_chosen = sample(copied_id_set, nensemble)
 #    else
 #        ids_chosen = sample(copied_id_set, nensemble, replace = false)
-    #    end
+#    end
 
     
     # Now we have the set of ids we want to carry on with. Within this set,

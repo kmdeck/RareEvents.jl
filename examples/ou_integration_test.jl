@@ -71,6 +71,7 @@ for iter in 1:iters
 end
 rmprocs([p for p in procs() if p != myid()])
 
+
 # Evolve the solution directly; compute statistics
 tspan_direct = (0.0, 5e5)
 direct_solution = evolve_stochastic_system(model, zeros(dimensions), tspan_direct, dt, (maxiters = 1e8,));
