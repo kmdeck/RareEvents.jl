@@ -1,62 +1,50 @@
 using Test
 using StatsBase
 using Random
-import RareEvents: sample_and_rewrite_history!, orig_sample_and_rewrite_history!, compute_ncopies!
+import RareEvents: compute_ncopies!, sample_ids!
 
 nensemble = 500
-nsteps = 1
-idx_current = nsteps
 
-@testset "old v new" begin
+@testset "sample_ids! unit test" begin
     rng = MersenneTwister(1234);
-    ensemble_new = [ones(nsteps)*k for k in 1:nensemble]
     frequencies = Array(1:nensemble) # P(k) = k/norm
-    sample_and_rewrite_history!(ensemble_new, frequencies, idx_current, rng)
-    
+    ids = Array(1:1:nensemble)
+    cloned_ids = similar(ids)
+    sample_ids!(cloned_ids, ids, frequencies, rng)
     rng = MersenneTwister(1234);
-    ensemble_old = [ones(nsteps)*k for k in 1:nensemble]
-    frequencies = Array(1:nensemble) # P(k) = k/norm
-    orig_sample_and_rewrite_history!(ensemble_old, frequencies, idx_current, rng)
-    diff = sort(vcat(ensemble_new...)) .== sort(vcat(ensemble_old...))
-    @test sum(diff) .== nensemble
-
+    ids_chosen = shuffle!(rng, vcat([repeat([k], frequencies[k]) for k in 1:nensemble]...))[1:nensemble]
+    n_appearances = StatsBase.counts(ids_chosen, nensemble)
+    ids_to_be_cut =  ids[n_appearances .== 0]
+    ids_to_be_cloned =  ids[n_appearances .> 1]
+    ids_left_alone = ids[n_appearances .== 1]
+    # Determine how many clones to make of those that need them
+    n_clones = n_appearances[ids_to_be_cloned] .- 1
+    @test cloned_ids[ids_left_alone] == ids[ids_left_alone]
+    @test sum(cloned_ids[ids_to_be_cut] .== ids[ids_to_be_cut]) == 0
+    final_counts = StatsBase.counts(cloned_ids, nensemble)
+    @test ids_to_be_cloned == ids[final_counts .> 1]
+    @test final_counts[final_counts .> 1] .- 1 == n_clones
 end
 
-
-
-@testset "Probabilistic test" begin
+@testset "sample_ids!: ncopies = 1 limiting case" begin
     rng = MersenneTwister(1234);
-    ensemble = [ones(nsteps)*k for k in 1:nensemble]
-    frequencies = Array(1:nensemble) # P(k) = k/norm
-    sample_and_rewrite_history!(ensemble, frequencies, idx_current, rng)
-    
-    normalization = sum(frequencies)#(nensemble^2.0-1^2.0)/2.0
-    probabilities = frequencies ./ normalization
-    expected_mean = sum(frequencies .* probabilities)#(nensemble^3.0 - 1^3.0)/3.0/normalization
-    σ_mean = sqrt(sum((frequencies .- expected_mean).^2.0 .* probabilities))./sqrt(nensemble)
-    @test abs(mean(ensemble)[1] .-expected_mean) < σ_mean*3.0
-end
-
-@testset "ncopies = 1 -> no change" begin
-    rng = MersenneTwister(1234);
-    ensemble = [ones(nsteps)*k for k in 1:nensemble]
-    orig_ensemble = copy(ensemble)
     ncopies = Int64.(ones(nensemble))
-    sample_and_rewrite_history!(ensemble, ncopies, idx_current, rng)
-    diff = sort(vcat(ensemble...)) .== sort(vcat(orig_ensemble...))
-    @test sum(diff) .== nensemble
+    ids = Array(1:1:nensemble)
+    cloned_ids = similar(ids)
+    sample_ids!(cloned_ids, ids, ncopies, rng)
+    @test cloned_ids == ids
 end
 
 
-@testset "ncopies" begin
+@testset "ncopies unit test" begin
     rng= MersenneTwister(1);
     nensemble = 10
     draw = rand(rng, nensemble)
-    ncopies = ones(nensemble)
-    scores = Array(1:1:nensemble)
+    ncopies = Int.(ones(nensemble))
+    scores = Array(1.0:1:nensemble)
     expected_ncopies = Int.(floor.(scores ./mean(scores) .+ draw))
     rng= MersenneTwister(1);
-    compute_ncopies!(ncopies, scores,mean(scores), nensemble, rng)
+    compute_ncopies!(ncopies, scores, mean(scores), nensemble, rng)
     similar = ncopies .== expected_ncopies
     @test sum(similar) == nensemble
 end
