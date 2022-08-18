@@ -144,21 +144,25 @@ function run!(sim::RareEventSampler)
     t2 = t_start+sim.τ
     i1 = 1
     i2 = 1+1*nsteps_per_resample
+    ids_to_be_cut = Array([])
+    cloned_id_set = Array([])
     map(0:(nresample-1)) do i
         # can be done per worker
         if i > 0
-            sample_and_rewrite_history!(sim.ensemble, ncopies, i1, rng)
+            rewrite_history!(sim.ensemble, ids_to_be_cut, cloned_id_set, i1)
             perturb_trajectories!(u1, sim.ensemble, sim.nensemble, i1, sim.ϵ)
         end
-
         trajectories = integrate(sim, u1,t1,t2)
-        score_trajectories!(sim, scores, trajectories, i1, i2)
-        
-        
+        for k in 1:sim.nensemble
+            sim.ensemble[k][i1:i2] .= trajectories[k]
+        end
+
         # Central
+        scores .= score.(Ref(sim), trajectories)
         sim.weight_norm[i+1] = mean(scores)
         compute_ncopies!(ncopies, scores, sim.weight_norm[i+1], sim.nensemble, rng)
-
+        ids_to_be_cut, cloned_id_set = sample_ids(sim.ensemble, ncopies, rng)
+        
         # Increment resample index
         i = i+1
         # Update start and end points of integrations
@@ -170,16 +174,24 @@ function run!(sim::RareEventSampler)
 end
 
 
+#=
+for k in 1:sim.nensemble
+    if i > 0
+        if k in ids_to_be_cut
+             #what is j
+             idx_cut = ids_to_be_cut[j]
+             idx_clone = cloned_id_set[j]
+             ensemble[idx_cut][1:i1] .= ensemble[idx_clone][1:i1]
+        end
+        u_current[k] = ensemble[k][i1] + randn(d)*ϵ
+    end
+    trajectory = sim.evolve_single_trajectory((t1,t2))(u_current[k])
+    sim.ensemble[k][i1:i2] .= trajectories[k]
+end    
+=#
+
 function integrate(sim::RareEventSampler, u_prev,t_prev,t_curr)
      return pmap(sim.evolve_single_trajectory((t_prev,t_curr)),u_prev;distributed = sim.distributed)
-end
-
-function score_trajectories!(sim::RareEventSampler, scores, trajectories, idx_prev::Int,idx_current::Int)
-    for k in 1:sim.nensemble
-        sim.ensemble[k][idx_prev:idx_current] .= trajectories[k]
-        scores[k] = score(sim,trajectories[k])
-    end
-    nothing
 end
 
 function compute_ncopies!(ncopies::Array,scores::Array, norm, nensemble::Int, rng)
@@ -200,20 +212,11 @@ function sample_ids(ensemble::Vector, frequencies::Array, rng)
         ids_chosen = copied_id_set[1:nensemble] # should be the same as sampling w/o replacement
     end
     
-    # be aware!! this is very sensitive. 
-    # For example, this does not return the same distribution
-#    if sum(frequencies) < nensemble
-#        ids_chosen = sample(copied_id_set, nensemble)
-#    else
-#        ids_chosen = sample(copied_id_set, nensemble, replace = false)
-#    end
-
-    
     # Now we have the set of ids we want to carry on with. Within this set,
     # we may not have nsenemble unique members; some ids appear more than once.
 
     # Determine which ids of the original set are cut, and which require ADDITIONAL copies (which must be cloned)
-    chosen_ncopies = counts(ids_chosen, nensemble)
+    chosen_ncopies = StatsBase.counts(ids_chosen, nensemble)
     ids_to_be_cut =  ids[chosen_ncopies .== 0]
     ids_to_be_cloned =  ids[chosen_ncopies .> 1]
 
@@ -226,7 +229,6 @@ function sample_ids(ensemble::Vector, frequencies::Array, rng)
     return ids_to_be_cut, cloned_id_set
 end
 
-
 function rewrite_history!(ensemble::Vector, ids_to_be_cut::Array, cloned_id_set::Array, idx_current::Int)
     for j in 1:length(ids_to_be_cut)
         idx_cut = ids_to_be_cut[j]
@@ -235,14 +237,6 @@ function rewrite_history!(ensemble::Vector, ids_to_be_cut::Array, cloned_id_set:
     end
     nothing
 end
-
-
-function sample_and_rewrite_history!(ensemble::Vector, frequencies::Array, idx_current::Int, rng)
-    ids_to_be_cut, cloned_id_set = sample_ids(ensemble, frequencies, rng)
-    rewrite_history!(ensemble, ids_to_be_cut, cloned_id_set, idx_current)
-    nothing
-end
-
 
 function perturb_trajectories!(u_current::Array, ensemble::Vector, nensemble::Int, idx_current::Int, ϵ::Real)
     d = length(u_current[1])
@@ -256,6 +250,21 @@ include("utils.jl")
 include("gev_utils.jl")
 
 # I'm keeping this around for now; we use it in tests.
+
+function score_trajectories!(sim::RareEventSampler, scores, trajectories, idx_prev::Int,idx_current::Int)
+    for k in 1:sim.nensemble
+        sim.ensemble[k][idx_prev:idx_current] .= trajectories[k]
+        scores[k] = score(sim,trajectories[k])
+    end
+    nothing
+end
+
+function sample_and_rewrite_history!(ensemble::Vector, frequencies::Array, idx_current::Int, rng)
+    ids_to_be_cut, cloned_id_set = sample_ids(ensemble, frequencies, rng)
+    rewrite_history!(ensemble, ids_to_be_cut, cloned_id_set, idx_current)
+    nothing
+end
+
 function orig_sample_and_rewrite_history!(ensemble::Vector, frequencies::Array, idx_current::Int,rng)
     N = length(frequencies)
     N_c = sum(frequencies)
