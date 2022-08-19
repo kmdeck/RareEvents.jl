@@ -6,7 +6,7 @@ using Random
 
 
 export RareEventSampler, run!
-
+#include("trees.jl")
     
 """
     RareEventSampler{FT<:AbstractFloat, ST,P, ES}
@@ -39,6 +39,8 @@ struct RareEventSampler{FT<:AbstractFloat, ST,P}
     distributed::Bool
     "Random seed"
     seed::Int64
+    "History of which trajectories were copied"
+    history::Matrix{Int}
 end
 
 """
@@ -103,7 +105,10 @@ function RareEventSampler{FT}(
     # Preallocation for weight normalization at each resample time
     weight_norm = zeros(Int(div(t_integration, τ, RoundUp)))
 
-    args = (dt, τ, tspan, evolve_single_trajectory, nensemble, ensemble, metric,k, weight_norm, ϵ, distributed, seed)
+    # Preallocation for history matrix
+    history = Int.(zeros((nensemble, Int(div(t_integration, τ, RoundUp)))))
+    args = (dt, τ, tspan, evolve_single_trajectory, nensemble, ensemble, metric,k, weight_norm, ϵ, distributed, seed, history)
+    #trees = [IntNode{Int64}(k) for k in 1:nensemble]
     return RareEventSampler{FT,typeof(ensemble),typeof(evolve_single_trajectory)}(args...)
 end
 
@@ -130,7 +135,7 @@ function run!(sim::RareEventSampler)
     i1 = 1
     i2 = 1+1*nsteps_per_resample
     cloned_id_set = Array(1:1:sim.nensemble)
-
+    sim.history .= repeat(ids, 1,nresample)
     # dimensionality of state
     d = length(sim.ensemble[1][1])
     map(0:(nresample-1)) do i
@@ -138,9 +143,16 @@ function run!(sim::RareEventSampler)
         for k in 1:sim.nensemble
             # "rewrite history"
             # Note that if i = 0, cloned_id_set is such that no trajectory is rewritten.
-            if cloned_id_set[k] != k
+            if cloned_id_set[k] == k
+                nothing
+                # We keep at least one copy
+                #append_child!(trees[k], IntNode{Int64}(k))
+            else
+                # for those that are replaced...
                 idx_clone = cloned_id_set[k]
+                #append_child!(trees[idx_clone], IntNode{Int64}(k))
                 sim.ensemble[k][1:i1] .= sim.ensemble[idx_clone][1:i1]
+                sim.history[k, 1:i] .= sim.history[idx_clone,1:i]
             end
             # Perturb
             # Note: We don't need to do this at i = 0, but it doesn't matter.
@@ -167,6 +179,24 @@ function run!(sim::RareEventSampler)
         i2 = 1+(i+1)*nsteps_per_resample
     end
 end
+
+# Do it the easy way first so we have a comparison
+function reconstruct_trajectory(sim::RareEventSampler, k::Int, nsteps_per_resample::Int)
+    # allocation
+    reconstructed_trajectory = similar(sim.ensemble[k])
+    # history 
+    history = sim.history[k,:]
+
+    # reconstruct
+    map(0:(nresample-1)) do i
+        i1 = 1
+        i2 = 1+(i+1)*nsteps_per_resample  
+        reconstructed_trajectory[i1:i2] .= sim.ensemble[history[i+1]][i1:i2]
+    end
+    return reconstructed_trajectory
+end
+
+    
 
 """
     score(trajectory, k, dt, metric)
