@@ -8,8 +8,8 @@ using Plots
 
 examples_dir = joinpath(pkgdir(RareEvents), "examples")
 include(joinpath(examples_dir, "standard_map.jl"))
-n_processes = Sys.CPU_THREADS
-addprocs(n_processes)
+#n_processes = Sys.CPU_THREADS
+#addprocs(n_processes)
 
 # Set up model and wrapper function that evolves a single trajectory
 dt = 1.0
@@ -24,10 +24,10 @@ model = StandardMap{Float64}(4.0)
 yvals = 0.0:0.1:2π;
 nensemble = length(yvals)
 u0 = [[y, 0.0] for y in yvals]
-k = -0.2
+k = -0.5
 ϵ = 0.001
-metric(y) = abs(y[1]-π)
-t_end = 500.0
+metric(y) = abs(y[2]-π) + abs(y[1] -π)
+t_end = 300.0
 t_start = 0.0
 tspan = (t_start, t_end)
 # averaging window
@@ -67,7 +67,7 @@ for iter in 1:iters
     em[:,iter], r[:,iter], r_paper[:,iter], σr[:, iter]= return_curve(a_m, t_end-t_start, lr_vector);
 
 end
-rmprocs([p for p in procs() if p != myid()])
+#rmprocs([p for p in procs() if p != myid()])
 
 
 # Evolve the solution directly; compute statistics
