@@ -24,12 +24,12 @@ model = OrnsteinUhlenbeck{FT}(θ, σ, dimensions)
 
 # Set up rare event algorithm
 τ = 0.5
-nensemble = 1000
+nensemble = 500
 u0 = [copy(zeros(dimensions)) .+ randn(dimensions)*0.71 for i in 1:nensemble]
-k = 0.3
+k = 0.4
 ϵ = 0.002
 metric(y) = y[1]
-t_end = 100.0
+t_end = 200.0
 t_start = 0.0
 tspan = (t_start, t_end)
 # averaging window
@@ -78,15 +78,23 @@ direct_solution = evolve_stochastic_system(model, zeros(dimensions), tspan_direc
 direct_cost = (tspan_direct[2]-tspan_direct[1])*dt
 u = [metric(direct_solution[k]) for k in 1:length(direct_solution)]
 A = block_mean(u, steps_per_window)
-m = 100
 em_direct, r_direct, r_paper_direct, σr_direct = return_curve(A, FT(T),  FT.(ones(length(A))))
 
 # Fit GEV
 m = 100 
 blocks = block_maxima(A, m)
 params, nll = fit_gev(blocks, [std(blocks), mean(blocks), 0.1])
-cdf_A= (gev_cdf.(a_range, params[1], params[2], params[3])).^(1.0/m)
-pdf_A= (cdf_A[2:end] .- cdf_A[1:end-1])/bin
+chain = evolve_mcmc(blocks, params, [0.01,0.01,0.05], log_likelihood_gev,1000000; save_at = 100)
+n_samples = 100
+chain_samples = chain[Int.(round.(rand(n_samples)*length(chain)))]
+gev_rtn = zeros(n_samples, length(a_range))
+for (i, sample) in enumerate(chain_samples)
+    cdf = min.(gev_cdf.(a_range, sample[1], sample[2], sample[3]).^(1.0/m), 1.0-eps(FT))
+    gev_rtn[i,:] .= 50.0 ./ (1.0 .- cdf)
+end
+median_curve = [median(gev_rtn[:,k]) for k in 1:length(a_range)]
+upper_curve = [sort(gev_rtn[:,k])[83] for k in 1:length(a_range)]
+lower_curve = [sort(gev_rtn[:,k])[17] for k in 1:length(a_range)]
 
 
 # Make plots
@@ -98,23 +106,25 @@ for i in 1:(length(a_range)-1)
     mask = (em[:] .< a_range[i+1]) .& ( em[:] .>= a_range[i])
     if sum(mask) >0
         mean_a[i] = mean(em[:][mask])
-        mean_rtn[i] = log10.(mean(r_paper[:][mask]))
-        std_rtn[i] = std(r_paper[:][mask])/mean(r_paper[:][mask])./log(10.0)
+        mean_rtn[i] = mean(r_paper[:][mask])#log10.(mean(r_paper[:][mask]))
+        std_rtn[i] = std(r_paper[:][mask])#/mean(r_paper[:][mask])./log(10.0)
     end
 end
 nonzero = (mean_a .!= 0.0) .& (isnan.(std_rtn) .== 0)
 final_a = mean_a[nonzero]
 final_r = mean_rtn[nonzero]
 final_σr = std_rtn[nonzero]
-plot!(plot1,final_a, final_r, ribbon = final_σr, label = "GKLT Algorithm; using maxes")
-denominator = 1.0 .- cumsum(counts)/sum(counts)
-safe_denominator = denominator .> 10.0*eps(FT)
-plot!(plot1,a_range[safe_denominator], log10.(50.0 ./denominator[safe_denominator]), label = "GKLT Algorithm; using counts")
-plot!(plot1,em_direct, log10.(r_paper_direct), ribbon = σr_direct ./ r_paper_direct ./ log(10.0), label = "Direct Integration")
-plot!(plot1, a_range, log10.(50.0 ./ (1.0 .- cdf_A)), label = "GEV")
-plot!(plot1, a_range, log10.(50.0 ./ (1.0 .- 0.5 .*(1 .+erf.(a_range ./2 .^0.5 ./std(A))))), label = "Gaussian")
+plot!(plot1,final_a, final_r, ribbon = (min.(final_r .- 1, final_σr), final_σr), label = "GKLT Algorithm")
+
+#denominator = 1.0 .- cumsum(counts)/sum(counts)
+#safe_denominator = denominator .> 10.0*eps(FT)
+#plot!(plot1,a_range[safe_denominator], log10.(50.0 ./denominator[safe_denominator]), label = "GKLT Algorithm Counts")
+plot!(plot1,em_direct, r_paper_direct, ribbon = (min.(r_paper_direct .- 1, σr_direct), σr_direct), label = "Direct Integration")
+plot!(plot1, a_range, median_curve, ribbon = (min.(median_curve .-1, median_curve .- lower_curve), upper_curve .- median_curve), label = "GEV", color = :purple)
 plot!(plot1,xlabel = "Event magnitude")
-plot!(plot1,ylabel = "Log10(Return Time)")
+plot!(plot1,ylabel = "Return Time")
 plot!(plot1, legend = :topleft)
-plot!(plot1, xrange = [0.0,1.0])
-savefig(plot1, "return_curve_ou.png")
+plot!(plot1, xrange = [0.0,0.8])
+plot!(plot1, yaxis = :log)
+plot!(plot1, yrange = (1,1e10)
+savefig(plot1, "return_curve_ou_tmp.png")
