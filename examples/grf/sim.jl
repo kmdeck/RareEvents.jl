@@ -38,18 +38,18 @@ function stochastic_system(model::LinearDiffusionSDE{FT, Periodic}) where {FT}
                 k_jp1 = k + N
                 k_jm1 = k - N  
                 if i == N          
-                    du[k] += ((u[k_im1] - u[k]) - (u[k] - u[(j-1)*N+1]))
+                    du[k] += 1/2*((u[k_im1] - u[k]) - (u[k] - u[(j-1)*N+1]))
                 elseif i ==1
-                    du[k] += ((u[(j-1)*N+N] - u[k]) - (u[k] - u[k_ip1]))
+                    du[k] += 1/2*((u[(j-1)*N+N] - u[k]) - (u[k] - u[k_ip1]))
                 else
-                    du[k] += ((u[k_im1] - u[k]) - (u[k] - u[k_ip1]))
+                    du[k] += 1/2*((u[k_im1] - u[k]) - (u[k] - u[k_ip1]))
                 end
                 if j == N
-                    du[k] += ((u[i] - u[k]) - (u[k] - u[k_jm1]))
+                    du[k] += 1/2*((u[i] - u[k]) - (u[k] - u[k_jm1]))
                 elseif j ==1
-                    du[k] += ((u[k_jp1] - u[k]) - (u[k] - u[(N-1)*N+i]))
+                    du[k] += 1/2*((u[k_jp1] - u[k]) - (u[k] - u[(N-1)*N+i]))
                 else
-                    du[k] += ((u[k_jp1] - u[k]) - (u[k] - u[k_jm1]))
+                    du[k] += 1/2*((u[k_jp1] - u[k]) - (u[k] - u[k_jm1]))
                 end
             end
         end
