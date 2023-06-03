@@ -34,11 +34,11 @@ integrator = create_integrator(model, u0, tspan, dt)
 nsteps = Int((tspan[2]-tspan[1])/dt)
 savesteps = 0:n_steps_per_save:nsteps
 
-solution = zeros(FT, (N, N, Int(nsteps/n)));
+solution = zeros(FT, (N, N, Int(nsteps/n_steps_per_save)));
 @time for i in 1:nsteps
     step!(integrator)
     if i ∈ savesteps
-        save_index = Int(i/n)
+        save_index = Int(i/n_steps_per_save)
         solution[:,:,save_index] .= reshape(integrator.u, (N,N))
     end
 end
