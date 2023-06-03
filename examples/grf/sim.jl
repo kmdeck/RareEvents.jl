@@ -1,6 +1,5 @@
 using DifferentialEquations: CorrelatedWienerProcess!, SDEProblem, solve, init, step!, EM
-using Plots
-using StatsBase
+using HDF5
 
 include("./rhs.jl")
 FT = Float32
@@ -27,9 +26,9 @@ end
 u_bc = FT(0)
 model = LinearDiffusionSDE(FT(1.0), Γ, N, Dirichlet(u_bc))
 # TODO: Run for approximately 125*1e4 = 1.25e6, saving output every 25-40
-tspan = FT.((0.0,1e2))
+tspan = FT.((0.0,3e6))
 dt = FT(0.1)
-dt_save = FT(25)
+dt_save = FT(30)
 n_steps_per_save = Int(round(dt_save/dt))
 integrator = create_integrator(model, u0, tspan, dt)
 nsteps = Int((tspan[2]-tspan[1])/dt)
@@ -43,3 +42,7 @@ solution = zeros(FT, (N, N, Int(nsteps/n)));
         solution[:,:,save_index] .= reshape(integrator.u, (N,N))
     end
 end
+fname = "./tmp.hdf5"
+fid = h5open(fname, "w")
+fid["res_32x32"] = solution
+close(fid)
