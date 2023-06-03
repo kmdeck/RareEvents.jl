@@ -75,7 +75,7 @@ nsteps = Int((tspan[2]-tspan[1])/dt)
 savesteps = 0:n_steps_per_save:nsteps
 
 solution = zeros(FT, (N,N, Int(nsteps/n_steps_per_save)));
-t = 0
+
 @time for i in 1:nsteps
     t = tspan[1]+dt*(i-1)
     Euler_Maruyama_step!(du, u, t, f!, g!, dt)
@@ -84,7 +84,7 @@ t = 0
         solution[:,:, save_index] .= reshape(u, (N,N))
     end
 end
-fname = "./tmp.hdf5"
+fname = "./grf.hdf5"
 fid = h5open(fname, "w")
 fid["res_32x32"] = solution
 close(fid)
