@@ -1,4 +1,4 @@
-
+using Plots
 
 function convert_to_animation(x, time_stride, N, clims)
     init_frames = length(x)
