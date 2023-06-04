@@ -9,7 +9,22 @@ half indices indicate faces
 - <dW(x1,y1,t) dW(x2,y2,s)> = δ(t-s)[(x1-x2)^2 + (y1-y2)^2 + 1]^(-1/2)
 - σ is a scalar
 """
-#TODO: figure out what value of σ we want; 
+#TODO: figure out what value of σ we want;
+#Understand correlation time better
+function convert_to_animation(x, time_stride, clims)
+           init_frames = size(x)[3]
+           x = x[:,:,1:time_stride:init_frames]
+           frames = size(x)[3]
+           animation = @animate for i = 1:frames
+                   heatmap(
+                       x[:,:,i],
+                       xaxis = false, yaxis = false, xticks = false, yticks = false,
+                       clims = clims
+                   )
+           end
+           return animation
+       end
+
 using HDF5
 using LinearAlgebra
 using Random
@@ -63,7 +78,7 @@ function f!(du, u, t::FT; N=N, u_bc = u_bc) where {FT}
 end
 
 # Stochastic increment du = σ dW
-σ = FT(1.0)
+σ = FT(0.1)
 # We create correlated noise from uncorrelated noise with the Cholesky
 # decomposition of Γ
 ΓL = cholesky(Γ).L
@@ -96,11 +111,11 @@ du = similar(u);
 # Integration time, timestep, nsteps
 # Based on an estimate of the autocorrelation time of ∼150
 # And wanting 1e4 autocorrelation times, with ~5 samples each.
-tspan = FT.((0.0,1.5e6))
+tspan = FT.((0.0,1.5e3))
 dt = FT(0.1)
 nsteps = Int((tspan[2]-tspan[1])/dt)
 # Saving interval, steps per interval, total # of solutions saved
-dt_save = FT(30)
+dt_save = FT(15)
 n_steps_per_save = Int(round(dt_save/dt))
 savesteps = 0:n_steps_per_save:nsteps
 
@@ -116,6 +131,12 @@ solution = zeros(FT, (N,N, Int(nsteps/n_steps_per_save)));
         solution[:,:, save_index] .= reshape(u, (N,N))
     end
 end
+
+
+clims= (minimum(minimum(solution[:])),maximum(maximum(solution[:])))
+anim = convert_to_animation(solution, 1, clims)
+gif(anim, "anim.gif", fps = 1)
+
 
 #Save
 fname = "./grf.hdf5"
