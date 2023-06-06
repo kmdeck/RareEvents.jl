@@ -1,0 +1,67 @@
+"""
+ Model
+"""
+struct LinearDiffusionSDE{FT <:AbstractFloat, CM, BC}
+    σ::FT
+    θ::FT
+    N::Int
+    bc::BC
+    ΓL::CM
+    W_cache::Vector{FT}
+    W_corr::Vector{FT}
+end
+
+abstract type AbstractBoundaryConditions end
+
+struct Dirichlet{FT} <: AbstractBoundaryConditions
+    boundary_value::FT
+end
+
+function make_deterministic_tendency(model::LinearDiffusionSDE{FT, CM, Dirichlet{FT}}) where {FT, CM}
+    function deterministic_tendency!(du,u,t)
+        N = model.N
+        θ = model.θ
+        u_bc = model.bc.boundary_value
+        du .= FT(0)
+        for i in 1:N
+            for j in 1:N
+                k = (j-1)*N+i
+                k_ip1 = k+1
+                k_im1 = k-1
+                k_jp1 = k + N
+                k_jm1 = k - N
+                # At the boundary, we have u_bc on the face
+                # while u[k] is at the cell center. -> Δx -> Δx/2
+                if i == N          
+                    du[k] += θ*((u[k_im1] - u[k]) - (u[k] - u_bc)/2)
+                elseif i ==1
+                    du[k] += θ*((u_bc - u[k])/2 - (u[k] - u[k_ip1]))
+                else
+                    du[k] += θ*((u[k_im1] - u[k]) - (u[k] - u[k_ip1]))
+                end
+                if j == N
+                    du[k] += θ*((u_bc - u[k])/2 - (u[k] - u[k_jm1]))
+                elseif j ==1
+                    du[k] += θ*((u[k_jp1] - u[k]) - (u[k] - u_bc)/2)
+                else
+                    du[k] += θ*((u[k_jp1] - u[k]) - (u[k] - u[k_jm1]))
+                end
+            end
+        end
+    end
+    return deterministic_tendency!
+end
+
+function make_stochastic_increment(model::LinearDiffusionSDE{FT}) where {FT}
+    function stochastic_increment!(du,u,t)
+        ΓL = model.ΓL
+        W_cache = model.W_cache
+        W_corr = model.W_corr
+        σ = model.σ
+        du.= FT(0)
+        randn!(W_cache)
+        mul!(W_corr,ΓL, W_cache)
+        du .= σ .* W_corr
+    end
+    return stochastic_increment!
+end

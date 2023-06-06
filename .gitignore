@@ -1,5 +1,7 @@
 *.csv
 *.png
+*.gif
+*.hdf5
 #.jl~
 *.jl~
 Manifest.toml
