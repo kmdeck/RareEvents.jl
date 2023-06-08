@@ -254,6 +254,7 @@ end
 
 include("utils.jl")
 include("gev_utils.jl")
+include("mcmc_utils.jl")
 
 # I'm keeping this around for now; we use it in tests.
 function orig_sample_and_rewrite_history!(ensemble::Vector, frequencies::Array, idx_current::Int,rng)
