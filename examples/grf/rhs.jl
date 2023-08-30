@@ -1,7 +1,20 @@
 """
- Model
+ 2D Model
 """
 struct LinearDiffusionSDE{FT <:AbstractFloat, CM, BC}
+    σ::FT
+    θ::FT
+    N::Int
+    bc::BC
+    ΓL::CM
+    W_cache::Vector{FT}
+    W_corr::Vector{FT}
+end
+
+"""
+ 1D Model
+"""
+struct LinearDiffusion1dSDE{FT <:AbstractFloat, CM, BC}
     σ::FT
     θ::FT
     N::Int
@@ -52,7 +65,28 @@ function make_deterministic_tendency(model::LinearDiffusionSDE{FT, CM, Dirichlet
     return deterministic_tendency!
 end
 
-function make_stochastic_increment(model::LinearDiffusionSDE{FT}) where {FT}
+function make_deterministic_tendency(model::LinearDiffusion1dSDE{FT, CM, Dirichlet{FT}}) where {FT, CM}
+    function deterministic_tendency!(du,u,t)
+        N = model.N
+        θ = model.θ
+        u_bc = model.bc.boundary_value
+        du .= FT(0)
+        for k in 1:N
+            # At the boundary, we have u_bc on the face
+            # while u[k] is at the cell center. -> Δx -> Δx/2
+            if k == 1
+                du[k] += θ*((u[k+1] - u[k]) - (u[k] - u_bc)/2)
+            elseif k == N
+                du[k] += θ*((u_bc - u[k])/2 - (u[k] - u[k-1]))
+            else
+                du[k] += θ*((u[k+1] - u[k]) - (u[k] - u[k - 1]))
+            end
+        end
+    end
+    return deterministic_tendency!
+end
+
+function make_stochastic_increment(model::Union{LinearDiffusionSDE{FT}, LinearDiffusion1dSDE{FT}}) where {FT}
     function stochastic_increment!(du,u,t)
         ΓL = model.ΓL
         W_cache = model.W_cache
