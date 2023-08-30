@@ -60,7 +60,7 @@ tspan = FT.((0.0,1e6))
 dt = FT(0.25)
 nsteps = Int((tspan[2]-tspan[1])/dt)
 # Saving interval, steps per interval, total # of solutions saved
-dt_save = FT(1.0)
+dt_save = dt
 n_steps_per_save = Int(round(dt_save/dt))
 savesteps = 0:n_steps_per_save:nsteps
 
@@ -69,6 +69,9 @@ solution = zeros(FT, (N,N, Int(nsteps/n_steps_per_save)));
 
 # Simulate
 @time for i in 1:nsteps
+    if i % 1e4 == 0.0
+        println(i)
+    end
     t = tspan[1]+dt*(i-1)
     Euler_Maruyama_step!(du, u, t, deterministic_tendency!, stochastic_increment!, dt)
     if i ∈ savesteps
@@ -79,7 +82,7 @@ end
 spinup = FT(100)
 n_savesteps_in_spinup = Int(spinup / dt_save)
 #Save
-fname = "./grf.hdf5"
+fname = "./grf_dt_save_eq_dt.hdf5"
 fid = h5open(fname, "w")
 fid[string("res_32x32_$σ","_$θ","_$dt","_$dt_save")] = solution[:,:,n_savesteps_in_spinup:end]
 close(fid)
