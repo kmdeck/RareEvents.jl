@@ -74,10 +74,10 @@ solution = zeros(FT, (N,N, Int(nsteps/n_steps_per_save)));
         solution[:,:, save_index] .= reshape(u, (N,N))
     end
 end
-spinup = FT(150)
-n_savesteps_in_spinup = Int(spinup / dt_save)
-
-solution = solution[:,:,n_savesteps_in_spinup:end]
+#spinup should be zero
+#spinup = FT(150)
+#n_savesteps_in_spinup = Int(spinup / dt_save)
+#solution = solution[:,:,n_savesteps_in_spinup:end]
 clims= (percentile(solution[:],0.1), percentile(solution[:], 99.9))
 anim = convert_to_animation(solution[:,:,1:200], 1, clims)
 gif(anim, string("anim_$σ","_$θ.gif"), fps = 10)
