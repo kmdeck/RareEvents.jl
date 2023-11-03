@@ -11,12 +11,13 @@ struct LinearDiffusionSDE{FT <:AbstractFloat, CM, BC}
     W_corr::Vector{FT}
 end
 
-struct LudoDiffusionSDE{FT <:AbstractFloat, CM}
+struct LudoDiffusionSDE{FT <:AbstractFloat, CM, BC}
     σ::FT
     α::FT
     β::FT
     γ::FT
     N::Int
+    bc::BC
     ΓL::CM
     W_cache::Vector{FT}
     W_corr::Vector{FT}
@@ -36,6 +37,8 @@ struct LinearDiffusion1dSDE{FT <:AbstractFloat, CM, BC}
 end
 
 abstract type AbstractBoundaryConditions end
+
+struct Periodic <: AbstractBoundaryConditions end
 
 struct Dirichlet{FT} <: AbstractBoundaryConditions
     boundary_value::FT
@@ -76,7 +79,7 @@ function make_deterministic_tendency(model::LinearDiffusionSDE{FT, CM, Dirichlet
     return deterministic_tendency!
 end
 
-function make_deterministic_tendency(model::LudoDiffusionSDE{FT, CM}) where {FT, CM}
+function make_deterministic_tendency(model::LudoDiffusionSDE{FT, CM, Periodic}) where {FT, CM}
     function deterministic_tendency!(du,u,t)
         N = model.N
         α = model.α
@@ -101,21 +104,21 @@ function make_deterministic_tendency(model::LudoDiffusionSDE{FT, CM}) where {FT,
                 # while u[k] is at the cell center. -> Δx -> Δx/2
                 if i == N
                     v_bc = v[(j-1)*N+1]
-                    du[k] += ((v[k_im1] - v[k]) - (v[k] - v_bc)/2)
+                    du[k] += ((v[k_im1] - v[k]) - (v[k] - v_bc))/2
                 elseif i == 1
                     v_bc = v[(j-1)*N+N]
-                    du[k] += ((v_bc - v[k])/2 - (v[k] - v[k_ip1]))
+                    du[k] += ((v_bc - v[k])/2 - (v[k] - v[k_ip1]))/2
                 else
-                    du[k] += ((v[k_im1] - v[k]) - (v[k] - v[k_ip1]))
+                    du[k] += ((v[k_im1] - v[k]) - (v[k] - v[k_ip1]))/2
                 end
                 if j == N
                     v_bc = v[i]
-                    du[k] += ((v_bc - v[k])/2 - (v[k] - v[k_jm1]))
+                    du[k] += ((v_bc - v[k])/2 - (v[k] - v[k_jm1]))/2
                 elseif j == 1
                     v_bc = v[(N-1)*N+i]
-                    du[k] += ((v[k_jp1] - v[k]) - (v[k] - v_bc)/2)
+                    du[k] += ((v[k_jp1] - v[k]) - (v[k] - v_bc))/2
                 else
-                    du[k] += ((v[k_jp1] - v[k]) - (v[k] - v[k_jm1]))
+                    du[k] += ((v[k_jp1] - v[k]) - (v[k] - v[k_jm1]))/2
                 end
             end
         end

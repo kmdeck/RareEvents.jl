@@ -31,11 +31,12 @@ for i1 in 1:N
         for i2 in 1:N
             for j2 in 1:N
                 k2 = (j2-1)*N+i2
-                Γ[k1,k2] = FT(1.0/sqrt((i1-i2)^2 + (j1-j2)^2+1))
+                Γ[k1,k2] = FT(1/sqrt(min(abs(i1-i2),N-abs(i1-i2))^2 + min(abs(j1-j2),N-abs(j1-j2))^2+1))
             end
         end
     end
 end
+
 # We create correlated noise from uncorrelated noise with the Cholesky
 # decomposition of Γ
 # Note: for nonsquare matrices, SVD can be used. DiffEq uses SVD.
@@ -45,19 +46,20 @@ end
 # Allocate noise vectors up front.
 W = zeros(FT, N*N)
 W_corr = similar(W)
-model = LudoDiffusionSDE(σ, α, β, γ, N, ΓL, W, W_corr)
+model = LudoDiffusionSDE(σ, α, β, γ, N, Periodic(), ΓL, W, W_corr)
 
 deterministic_tendency! = make_deterministic_tendency(model)
 stochastic_increment! = make_stochastic_increment(model)
 
 # Initial condition
-u = FT.(zeros(N^2));
+u = 2*rand(FT, N^2).-1;
+
 # Preallocate
 du = similar(u);
 # Integration time, timestep, nsteps
 # The autocorrelation time is around 100
 # We want around 1e4 of them
-tspan = FT.((0.0,1e5))
+tspan = FT.((0.0,5e7))
 dt = FT(0.02) 
 nsteps = Int((tspan[2]-tspan[1])/dt)
 

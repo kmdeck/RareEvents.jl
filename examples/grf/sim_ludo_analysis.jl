@@ -31,11 +31,12 @@ for i1 in 1:N
         for i2 in 1:N
             for j2 in 1:N
                 k2 = (j2-1)*N+i2
-                Γ[k1,k2] = FT(1.0/sqrt((i1-i2)^2 + (j1-j2)^2+1))
+                Γ[k1,k2] = FT(1/sqrt(min(abs(i1-i2),N-abs(i1-i2))^2 + min(abs(j1-j2),N-abs(j1-j2))^2+1))
             end
         end
     end
 end
+
 # We create correlated noise from uncorrelated noise with the Cholesky
 # decomposition of Γ
 # Note: for nonsquare matrices, SVD can be used. DiffEq uses SVD.
@@ -45,21 +46,22 @@ end
 # Allocate noise vectors up front.
 W = zeros(FT, N*N)
 W_corr = similar(W)
-model = LudoDiffusionSDE(σ, α, β, γ, N, ΓL, W, W_corr)
+model = LudoDiffusionSDE(σ, α, β, γ, N, Periodic(), ΓL, W, W_corr)
 
 deterministic_tendency! = make_deterministic_tendency(model)
 stochastic_increment! = make_stochastic_increment(model)
 
 # Initial condition
-u = FT.(zeros(N^2));
+u = 2*rand(FT, N^2).-1;
+
 # Preallocate
 du = similar(u);
 # Integration time, timestep, nsteps
 tspan = FT.((0.0,2.5e6))
-dt = FT(0.02)
+dt = FT(0.25)
 nsteps = Int((tspan[2]-tspan[1])/dt)
 # Saving interval, steps per interval, total # of solutions saved
-dt_save = FT(1.0)
+dt_save = FT(20.0)
 n_steps_per_save = Int(round(dt_save/dt))
 savesteps = 0:n_steps_per_save:nsteps
 
@@ -93,10 +95,11 @@ values = zeros(size(solution)[3],N)
 for i in 1:size(solution)[3]
     values[i,:] .= solution[N ÷ 2,:,i]
 end
-lags = Array(1:1:(size(solution)[3]-1)) # not in units of time
+#lags = Array(1:1:(size(solution)[3]-1)) # not in units of time
+lags = [0:100...]
 ac = StatsBase.autocor(values, lags; demean = true)
 mean_ac = mean(ac, dims = 2)[:]
-Plots.plot(lags *dt_save, mean(ac, dims = 2)[:], label = "", ylabel = "Autocorrelation Coeff", xlabel = "Lag (time)", xlim = [0,2.5e3])
+Plots.plot(lags *dt_save, mean(ac, dims = 2)[:], label = "", ylabel = "Autocorrelation Coeff", xlabel = "Lag (time)", xlim = [0,2.5e6])
 Plots.savefig(string("ludo_ac","_$N", "x$N", "_$σ","_$α","_$β","_$γ",".png"))
 
 τ = maximum(lags[mean_ac .> 0.25])*dt_save
