@@ -17,11 +17,18 @@ include("./rhs.jl")
 # Set up model
 FT = Float32
 # Image is NxN
+
+# Parameters
 N = 8
-α = FT(3)
-β = FT(0.1)
-γ = FT(20)
+α = FT(0.3)
+β = FT(0.5)
+γ = FT(10)
 σ = FT(2.0)
+
+# We can test the response function with the following values of the parameters:
+# α = 0.0, β = 0.5, γ = 0.1, σ = 2 (in this case we should get an almost perfect overlap with the quasi-Gaussian approximation)
+# α = 0.1, β = 0.5, γ = 1, σ = 2 (with these parametrs the generative model should perform better)
+# α = 0.3, β = 0.5, γ = 10, σ = 2 (much better)
 
 # Boundary condition - periodic
 Γ = FT.(reshape(zeros(N^4), (N^2,N^2)))
@@ -80,6 +87,35 @@ end
 
 # regularize
 solution = regularization(solution)
+
+##
+# Plot
+trj = reshape(solution,(N^2,size(solution)[3]))
+
+pl1 = plot(trj[1,1:100:end])
+pl1 = plot!(trj[15,1:100:end])
+pl1 = plot!(trj[30,1:100:end])
+pl1 = plot!(trj[45,1:100:end])
+pl1 = plot!(trj[60,1:100:end])
+
+lags = [0:200...]
+acf = autocor(trj[1,:],lags)
+pl2 = plot(acf)
+
+pl3 = stephist(reshape(trj,(N^2*size(trj)[2])),normalize=:pdf)
+
+cum = zeros(10)
+for i in 1:10
+    cum[i] = cumulant(reshape(trj,(64*size(trj)[2])),i)
+end
+pl4 = scatter(cum)
+
+display(pl1)
+display(pl2)
+display(pl3)
+display(pl4)
+
+##
 
 #spinup should be zero
 spinup = 15000
