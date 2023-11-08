@@ -1,6 +1,6 @@
 #=
 This solves the equation
-du = (∇^2 - β) tanh(γu) - α + σ dW
+du = (0.5*∇^2 - I * β) tanh(γu) - α + σ dW
 for a 2D image u, of size NxN, assuming
 - Dirichlet periodic boundary conditions
 half indices indicate faces
@@ -19,7 +19,7 @@ FT = Float32
 # Image is NxN
 
 # Parameters
-N = 8
+N = 64
 α = FT(0.3)
 β = FT(0.5)
 γ = FT(10)
@@ -27,7 +27,7 @@ N = 8
 
 # We can test the response function with the following values of the parameters:
 # α = 0.0, β = 0.5, γ = 0.1, σ = 2 (in this case we should get an almost perfect overlap with the quasi-Gaussian approximation)
-# α = 0.1, β = 0.5, γ = 1, σ = 2 (with these parametrs the generative model should perform better)
+# α = 0.1, β = 0.5, γ = 1, σ = 2 (with these parameters the generative model should perform better)
 # α = 0.3, β = 0.5, γ = 10, σ = 2 (much better)
 
 # Boundary condition - periodic
@@ -64,7 +64,7 @@ u = 2*rand(FT, N^2).-1;
 # Preallocate
 du = similar(u);
 # Integration time, timestep, nsteps
-tspan = FT.((0.0,2.5e6))
+tspan = FT.((0.0,1e6))
 dt = FT(0.25)
 nsteps = Int((tspan[2]-tspan[1])/dt)
 # Saving interval, steps per interval, total # of solutions saved
@@ -88,39 +88,7 @@ end
 # regularize
 solution = regularization(solution)
 
-##
-# Plot
-trj = reshape(solution,(N^2,size(solution)[3]))
-
-pl1 = plot(trj[1,1:100:end])
-pl1 = plot!(trj[15,1:100:end])
-pl1 = plot!(trj[30,1:100:end])
-pl1 = plot!(trj[45,1:100:end])
-pl1 = plot!(trj[60,1:100:end])
-
-lags = [0:200...]
-acf = autocor(trj[1,:],lags)
-pl2 = plot(acf)
-
-pl3 = stephist(reshape(trj,(N^2*size(trj)[2])),normalize=:pdf)
-
-cum = zeros(10)
-for i in 1:10
-    cum[i] = cumulant(reshape(trj,(64*size(trj)[2])),i)
-end
-pl4 = scatter(cum)
-
-display(pl1)
-display(pl2)
-display(pl3)
-display(pl4)
-
-##
-
-#spinup should be zero
-spinup = 15000
-#n_savesteps_in_spinup = Int(spinup / dt_save)
-#solution = solution[:,:,n_savesteps_in_spinup:end]
+# spinup should be zero
 clims= (percentile(solution[:],0.1), percentile(solution[:], 99.9))
 anim = convert_to_animation(solution[:,:,1:200], 1, clims)
 gif(anim, string("ludo_anim","_$N", "x$N", "_$σ","_$α","_$β","_$γ",".gif"), fps = 10)
@@ -131,11 +99,10 @@ values = zeros(size(solution)[3],N)
 for i in 1:size(solution)[3]
     values[i,:] .= solution[N ÷ 2,:,i]
 end
-#lags = Array(1:1:(size(solution)[3]-1)) # not in units of time
-lags = [0:100...]
+lags = [0:200...]
 ac = StatsBase.autocor(values, lags; demean = true)
 mean_ac = mean(ac, dims = 2)[:]
-Plots.plot(lags *dt_save, mean(ac, dims = 2)[:], label = "", ylabel = "Autocorrelation Coeff", xlabel = "Lag (time)", xlim = [0,2.5e6])
+Plots.plot(lags *dt_save, mean(ac, dims = 2)[:], label = "", ylabel = "Autocorrelation Coeff", xlabel = "Lag (time)", xlim = [0,1000])
 Plots.savefig(string("ludo_ac","_$N", "x$N", "_$σ","_$α","_$β","_$γ",".png"))
 
 τ = maximum(lags[mean_ac .> 0.25])*dt_save

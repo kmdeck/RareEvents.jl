@@ -1,6 +1,6 @@
 #=
 This solves the equation
-du = (∇^2 - β) tanh(γu) - α + σ dW
+du = (0.5*∇^2 - I * β) tanh(γu) - α + σ dW
 for a 2D image u, of size NxN, assuming
 - Dirichlet periodic boundary conditions
 half indices indicate faces
@@ -11,17 +11,24 @@ half indices indicate faces
 using LinearAlgebra
 using ProgressBars
 using Random
-using HDF5
+using StatsBase
 include("./utils.jl")
 include("./rhs.jl")
 # Set up model
 FT = Float32
 # Image is NxN
-N = 8
-α = FT(3)
-β = FT(0.1)
-γ = FT(20)
+
+# Parameters
+N = 32
+α = FT(0.3)
+β = FT(0.5)
+γ = FT(10)
 σ = FT(2.0)
+
+# We can test the response function with the following values of the parameters:
+# α = 0.0, β = 0.5, γ = 0.1, σ = 2 (in this case we should get an almost perfect overlap with the quasi-Gaussian approximation)
+# α = 0.1, β = 0.5, γ = 1, σ = 2 (with these parameters the generative model should perform better)
+# α = 0.3, β = 0.5, γ = 10, σ = 2 (much better)
 
 # Boundary condition - periodic
 Γ = FT.(reshape(zeros(N^4), (N^2,N^2)))
@@ -57,14 +64,11 @@ u = 2*rand(FT, N^2).-1;
 # Preallocate
 du = similar(u);
 # Integration time, timestep, nsteps
-# The autocorrelation time is around 100
-# We want around 1e4 of them
-tspan = FT.((0.0,5e7))
-dt = FT(0.02) 
+tspan = FT.((0.0,100*30000))
+dt = FT(0.25)
 nsteps = Int((tspan[2]-tspan[1])/dt)
-
 # Saving interval, steps per interval, total # of solutions saved
-dt_save = FT(1.0)
+dt_save = FT(25.0)
 n_steps_per_save = Int(round(dt_save/dt))
 savesteps = 0:n_steps_per_save:nsteps
 
@@ -80,8 +84,10 @@ solution = zeros(FT, (N,N, Int(nsteps/n_steps_per_save)));
         solution[:,:, save_index] .= reshape(u, (N,N))
     end
 end
-spinup = FT(100)
-n_savesteps_in_spinup = Int(spinup / dt_save)
+
+# regularize
+solution = regularization(solution)
+
 #Save
 fname = "./ludo_grf.hdf5"
 fid = h5open(fname, "w")
