@@ -20,9 +20,9 @@ FT = Float32
 
 # Parameters
 N = 32
-α = FT(0.3)
+α = FT(0.0)
 β = FT(0.5)
-γ = FT(10)
+γ = FT(0.1)
 σ = FT(2.0)
 
 # We can test the response function with the following values of the parameters:
@@ -68,7 +68,7 @@ tspan = FT.((0.0,100*30000))
 dt = FT(0.25)
 nsteps = Int((tspan[2]-tspan[1])/dt)
 # Saving interval, steps per interval, total # of solutions saved
-dt_save = FT(25.0)
+dt_save = FT(100.0)
 n_steps_per_save = Int(round(dt_save/dt))
 savesteps = 0:n_steps_per_save:nsteps
 
@@ -90,6 +90,6 @@ end
 
 #Save
 fname = "./ludo_grf.hdf5"
-fid = h5open(fname, "w")
-fid[string("ludo_res", "_$N", "x$N", "_$σ","_$α","_$β","_$γ","_$dt","_$dt_save")] = solution[:,:,n_savesteps_in_spinup:end]
+fid = h5open(fname, "r+")
+fid[string("ludo_res", "_$N", "x$N", "_$σ","_$α","_$β","_$γ","_$dt","_$dt_save")] = solution
 close(fid)
