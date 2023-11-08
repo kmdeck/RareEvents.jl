@@ -1,11 +1,10 @@
 #=
 This solves the equation
-du = (0.5*∇^2 - I * β) tanh(γu) - α + σ dW
+du = [(0.5*∇^2 - I * β) tanh(γu)]dt - α + σ dW
 for a 2D image u, of size NxN, assuming
-- Dirichlet periodic boundary conditions
-half indices indicate faces
+ - periodic boundary conditions on u
 - Δx = Δy = 1
-- <dW(x1,y1,t) dW(x2,y2,s)> = δ(t-s)[(x1-x2)^2 + (y1-y2)^2 + 1]^(-1/2)
+- <dW(x1,y1,t) dW(x2,y2,s)> = δ(t-s)[(x1-x2)^2 + (y1-y2)^2 + 1]^(-1/2) (accounting for periodic domain)
 - σ, α, β, γ are scalars
 =#
 using LinearAlgebra
@@ -16,8 +15,8 @@ include("./utils.jl")
 include("./rhs.jl")
 # Set up model
 FT = Float32
-# Image is NxN
 
+# Image is NxN
 # Parameters
 N = 32
 α = FT(0.3)
@@ -84,9 +83,6 @@ solution = zeros(FT, (N,N, Int(nsteps/n_steps_per_save)));
         solution[:,:, save_index] .= reshape(u, (N,N))
     end
 end
-
-# regularize
-# solution = regularization(solution)
 
 # spinup should be zero
 clims= (percentile(solution[:],0.1), percentile(solution[:], 99.9))

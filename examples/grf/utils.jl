@@ -38,13 +38,3 @@ function Euler_Maruyama_step!(du,u,t,f!,g!, dt)
     u .+=  sqrt(dt) .* du
     return u
 end
-
-function regularization(X,n_std=3)
-    X = X .- mean(X)
-    X = X ./ std(X) ./ n_std
-    indices = findall(X.>=1)
-    X[indices] .= 1.
-    indices = findall(X.<=-1)
-    X[indices] .= -1.
-    return X
-end

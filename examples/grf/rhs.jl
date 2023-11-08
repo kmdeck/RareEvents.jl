@@ -11,6 +11,11 @@ struct LinearDiffusionSDE{FT <:AbstractFloat, CM, BC}
     W_corr::Vector{FT}
 end
 
+"""
+    LudoDiffusionSDE
+
+du = [(1/2 ∇² - β) tanh(γu) - α] dt + σdW
+"""
 struct LudoDiffusionSDE{FT <:AbstractFloat, CM, BC}
     σ::FT
     α::FT
@@ -90,6 +95,7 @@ function make_deterministic_tendency(model::LudoDiffusionSDE{FT, CM, Periodic}) 
         du .= FT(0)
         
         # temporary nonlinear vector
+        # In the future, we could pre-allocate as needed
         v = @. tanh(γ*u)
 
         # apply Laplacian to nonlinear vector
@@ -100,8 +106,9 @@ function make_deterministic_tendency(model::LudoDiffusionSDE{FT, CM, Periodic}) 
                 k_im1 = k-1
                 k_jp1 = k + N
                 k_jm1 = k - N
-                # At the boundary, we have u_bc on the face
-                # while u[k] is at the cell center. -> Δx -> Δx/2
+                # Periodic BC: Δ in denominator of ∇v is the same at the boundary
+                # or in the interiori.
+                # Factor of 2 is definitional
                 if i == N
                     v_bc = v[(j-1)*N+1]
                     du[k] += ((v[k_im1] - v[k]) - (v[k] - v_bc))/2
