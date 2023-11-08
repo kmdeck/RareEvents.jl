@@ -11,7 +11,7 @@ half indices indicate faces
 using LinearAlgebra
 using ProgressBars
 using Random
-using StatsBase
+using HDF5
 include("./utils.jl")
 include("./rhs.jl")
 # Set up model
