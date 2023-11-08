@@ -19,7 +19,7 @@ FT = Float32
 # Image is NxN
 
 # Parameters
-N = 64
+N = 32
 α = FT(0.3)
 β = FT(0.5)
 γ = FT(10)
@@ -86,7 +86,7 @@ solution = zeros(FT, (N,N, Int(nsteps/n_steps_per_save)));
 end
 
 # regularize
-solution = regularization(solution)
+# solution = regularization(solution)
 
 # spinup should be zero
 clims= (percentile(solution[:],0.1), percentile(solution[:], 99.9))

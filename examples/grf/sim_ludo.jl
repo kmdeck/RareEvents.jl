@@ -86,7 +86,7 @@ solution = zeros(FT, (N,N, Int(nsteps/n_steps_per_save)));
 end
 
 # regularize
-solution = regularization(solution)
+# solution = regularization(solution)
 
 #Save
 fname = "./ludo_grf.hdf5"
