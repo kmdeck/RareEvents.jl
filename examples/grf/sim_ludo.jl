@@ -28,6 +28,7 @@ N = 32
 # α = 0.0, β = 0.5, γ = 0.1, σ = 2 (in this case we should get an almost perfect overlap with the quasi-Gaussian approximation)
 # α = 0.1, β = 0.5, γ = 1, σ = 2 (with these parameters the generative model should perform better)
 # α = 0.3, β = 0.5, γ = 10, σ = 2 (much better)
+# autocorrelation time should be around 100 time units
 
 # Boundary condition - periodic
 Γ = FT.(reshape(zeros(N^4), (N^2,N^2)))
@@ -68,6 +69,7 @@ dt = FT(0.25)
 nsteps = Int((tspan[2]-tspan[1])/dt)
 # Saving interval, steps per interval, total # of solutions saved
 dt_save = FT(100.0)
+# spinup in solution is therefore dt_save
 n_steps_per_save = Int(round(dt_save/dt))
 savesteps = 0:n_steps_per_save:nsteps
 
