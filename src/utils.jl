@@ -56,7 +56,7 @@ function return_curve(a_m::Vector{FT},
     return_time_paper = -ΔT ./ log.(1.0 .- γ)
     γ² = cumsum(lr_sorted.^2.0)./M
     σ_γ = sqrt.(γ² .-  γ.^2.0)/sqrt(M)
-    σ_rtn = return_time_naive .* σ_γ./γ
+    σ_rtn = -return_time_naive .* σ_γ./(log.(1.0 .- γ) .* (1.0 .- γ))
     return sorted,  return_time_naive, return_time_paper, σ_rtn
 end
 
